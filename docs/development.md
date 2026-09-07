@@ -127,6 +127,46 @@ pnpm typecheck
 
 PM2 配置在 `ecosystem.config.cjs`（双进程：`tianma-api` + `tianma-worker`），nginx 配置在 `deploy/nginx-tianma.conf`。
 
+## API 端点速查
+
+### 房间与成员
+
+| 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|
+| `GET` | `/rooms` | 登录 | 大厅：我拥有的 + 已加入的 + 公开房间 |
+| `POST` | `/rooms` | 登录 | 创建房间 |
+| `PATCH` | `/rooms/:roomId` | 房主 | 更新房间 |
+| `DELETE` | `/rooms/:roomId` | 房主 | **解散房间**（级联删除所有数据） |
+| `POST` | `/rooms/:roomId/join` | 登录 | 申请加入房间 |
+| `POST` | `/rooms/:roomId/invite` | 房主 | **邀请成员**（通过 email） |
+| `GET` | `/rooms/:roomId/memberships` | 成员 | 成员列表 |
+| `POST` | `/rooms/:roomId/memberships/:id/approve` | 房主 | 审批通过 |
+| `POST` | `/rooms/:roomId/memberships/:id/reject` | 房主 | 审批拒绝 |
+| `DELETE` | `/rooms/:roomId/membership` | 登录 | 退出房间 |
+
+### 讨论控制
+
+| 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|
+| `POST` | `/rooms/:roomId/start` | 房主/允许 | 启动讨论 |
+| `POST` | `/rooms/:roomId/runs/:runId/commands` | 房主/允许 | 暂停/继续/终止 |
+| `POST` | `/rooms/:roomId/runs/:runId/restart` | 房主 | **重启讨论**（重置轮次和预算） |
+
+### 治理
+
+| 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|
+| `POST` | `/rooms/:roomId/moderation` | 房主 | 手动治理（禁言/移出角色或用户） |
+| `POST` | `/rooms/:roomId/events/:eventId/revoke` | 房主 | 撤销治理 |
+| `GET` | `/rooms/:roomId/events` | 成员 | 治理事件列表 |
+
+### 消息
+
+| 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|
+| `GET` | `/rooms/:roomId/messages` | 成员 | 消息列表（支持 `?since=` 游标） |
+| `POST` | `/rooms/:roomId/messages` | 成员 | 发送消息（人类发言） |
+
 ## 已知未完成
 
-- 点名下一位发言者（`mvp-spec §3.4`）尚未实现；`SendMessageInputSchema.mentionRoleId` 目前没有消费者。
+- `SendMessageInputSchema.mentionRoleId` 目前没有消费者（前端未传）。

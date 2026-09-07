@@ -197,13 +197,47 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 - CI workflow 已接 MySQL 8 + Redis 7 service containers。
 - 部署产物齐全：`ecosystem.config.cjs` / nginx / `release.sh` / `docs/deployment.md`。
 - `apps/web` 已接通后端，浏览器实测全链路通过。
-- 尚未完成：`mvp-spec §3.4` 的点名发言。
+- 人类可参与辩论（发言影响 AI 走向）、房主可禁言/移出人类、可解散房间、可重启讨论、可邀请成员。
+- AI 角色间支持 @点名 发言。
 
 ### 未结的安全事项
 - 模型 API Key 已明文落盘并进入会话上下文，建议轮换。
 - MySQL 仍用 `root`，`.env` 里已写好建最小权限账号的 SQL。
 - `JWT_SECRET` 强度不足。
 - 仓库已纳入 git（3 个初始 commit + 2 个 WP8 commit），CI workflow 已配置但尚未在 GitHub 上实际跑过。
+
+## 2026-09-07：WP9 人类参与 + 房主治理增强
+
+### 关键事件
+- **AI 发言截断修复**：`maxTokensPerMessage` 默认 800→1500，覆盖 contracts、schema default、seed。
+- **人类参与辩论**：
+  - 导演检测最近 3 条有人类发言时，给 AI 角色 relevance 加分（进攻性高的角色更容易被选中回应）
+  - 人类发言创建后异步做治理检测（`human-moderation.ts`），命中规则写治理事件 + 处罚（PenaltyState.userId 维度）
+- **房主治理增强**：
+  - `Membership` 加 `mutedUntilRound` 字段
+  - `PenaltyState` 改为支持 role/user 双维度（schema 迁移：新增 id 主键、targetRoleId 可空、targetUserId 可空）
+  - `moderation.ts` 新增 `applyUserEffect`/`revertUserEffect`
+  - 消息创建时检查用户是否被禁言
+- **重启讨论**：`POST /rooms/:roomId/runs/:runId/restart` 复制旧 Run 配置创建新 Run
+- **房主邀请 + 大厅申请加入**：
+  - `POST /rooms/:roomId/invite`：房主输入 email 直接创建 invited 记录
+  - 大厅房间卡片显示"申请加入"按钮（非成员，自己房间不显示）
+- **角色间 @点名**：AI 发言中 `@角色名` 被导演解析，被点名的角色下一轮优先选中
+- **房主解散房间**：`DELETE /rooms/:roomId` 级联删除所有数据
+- **UI 优化**：新增 join-btn、mute、invite-row、danger-btn 等按钮样式
+
+### 缺陷修复
+- resume 409：继续讨论按钮只在 `paused` 状态显示，`queued` 显示"排队中..."
+- penalty id 空约束：发布脚本加 `rm -rf node_modules/.prisma/client` 强制重新生成
+
+### 文档同步
+- `development.md`：新增 API 端点速查表、更新已知未完成
+- `project-history.md`：更新当前状态、新增 WP9 小节
+
+### 验证
+- `pnpm typecheck`：零错误
+- `pnpm test`：189 测试全绿
+- `pnpm lint`：7 包全过，仅 5 条 no-console warning
 
 ## 2026-09-07：WP8 工程收尾（ESLint + CI + 部署）
 
@@ -232,6 +266,7 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 | 2026-09-03 | 门 C 工程 | 各包骨架；因迁移中途丢失源码而整体不可编译 | ⚠️ 已被重建 |
 | 2026-09-04~06 | 阶段 C 重建 | 契约+schema+队列+Worker+鉴权+治理+复盘；§9 七条验收实测通过 | ✅ |
 | 2026-09-07 | WP8 工程收尾 | ESLint 全通 + CI（MySQL/Redis）+ 部署产物 + 文档 | ✅ |
+| 2026-09-07 | WP9 人类参与+治理增强 | 人类参与辩论、房主禁言/移出/解散、重启讨论、邀请加入、@点名 | ✅ |
 
 ## 经验教训
 1. Windows 环境下工作区路径处理需要特别小心，`\\?\` 前缀会导致 CMD 和部分 Node 工具异常
