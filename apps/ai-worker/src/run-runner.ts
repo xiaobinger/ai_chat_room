@@ -194,8 +194,17 @@ export class RunRunner {
         roles,
       );
 
+      // 人类发言后，导演应优先选 AI 来回应。检测最近 3 条是否有人类发言。
+      const humanSpokeRecently = await this.repo.hasRecentHumanMessage(current.id, 3);
       const selection = selectNextSpeaker(
-        this.candidates(current, roles, states, settings, budget.budgetRemainingRatio(Date.now())),
+        this.candidates(
+          current,
+          roles,
+          states,
+          settings,
+          budget.budgetRemainingRatio(Date.now()),
+          humanSpokeRecently,
+        ),
       );
       await this.recordAudit(current, selection.audit);
 
@@ -295,12 +304,16 @@ export class RunRunner {
     states: AgentStateRecord[],
     settings: RunSettings,
     budgetRemaining: number,
+    humanSpokeRecently = false,
   ): CandidateFeatures[] {
     const byRole = new Map(states.map((state) => [state.roleId, state]));
     return roles.map((role) => {
       const state = byRole.get(role.id);
       const lastSpoke = state?.lastSpokeRound ?? -1;
       const spokeThisRound = lastSpoke === run.currentRound;
+      // 人类发言后，给所有 AI 角色 relevance 加分，让导演优先选 AI 来回应人类观点。
+      // 进攻性高的角色更倾向于反驳，安静的角色更倾向于支持，各自拿到不同权重。
+      const humanResponseBoost = humanSpokeRecently ? 0.3 * (role.aggressiveness / 100) : 0;
       return {
         roleId: role.id,
         // 本轮已发过言的角色视作"忙"，由导演的硬排除挡掉，防止它把整轮吃掉
@@ -311,7 +324,7 @@ export class RunRunner {
           lastSpoke === run.currentRound - 1 ? (state?.consecutiveTurns ?? 0) : 0,
         silenceRounds: lastSpoke < 0 ? 0 : run.currentRound - lastSpoke,
         // 没有 LLM 相关度打分时给中性值，让 silence / conflict 决定顺序
-        relevance: 0.5,
+        relevance: 0.5 + humanResponseBoost,
         mentioned: 0,
         conflict: role.aggressiveness / 200,
         budgetRemaining,

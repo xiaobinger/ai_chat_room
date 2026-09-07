@@ -19,6 +19,8 @@ interface RoomListItem {
   owner: PublicUser;
   roomRoles: { id: string; name: string; type: string; color: string | null }[];
   _count: { messages: number; runs: number; memberships: number };
+  isMember: boolean;
+  isPending: boolean;
 }
 
 export default function Lobby() {
@@ -42,6 +44,15 @@ export default function Lobby() {
       alive = false;
     };
   }, []);
+
+  const applyToJoin = async (roomId: string) => {
+    try {
+      await api('POST', `/rooms/${roomId}/join`, { intent: 'discuss' });
+      setRooms((prev) => prev.map((r) => (r.id === roomId ? { ...r, isPending: true } : r)));
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : '申请失败');
+    }
+  };
 
   // hero 优先展示正在进行的房间；没有就退回列表第一个
   const featured = rooms.find((room) => room.status === 'running') ?? rooms[0];
@@ -105,19 +116,33 @@ export default function Lobby() {
         ) : (
           <div className="roomgrid">
             {rooms.map((room, index) => (
-              <Link to={`/rooms/${room.id}`} className="roomcard" key={room.id}>
-                <span className={`roomicon r${index % 3}`}>
-                  <MessageSquare />
-                </span>
-                <div>
-                  <b>{room.title}</b>
-                  <p>
-                    {room.roomRoles.length} 个角色 · {room._count.messages} 条消息 ·{' '}
-                    {room.owner.displayName}
-                  </p>
-                </div>
-                <span className="status">{roomStatusLabel(room.status)}</span>
-              </Link>
+              <div className="roomcard" key={room.id}>
+                <Link to={`/rooms/${room.id}`} className="roomcard-main">
+                  <span className={`roomicon r${index % 3}`}>
+                    <MessageSquare />
+                  </span>
+                  <div>
+                    <b>{room.title}</b>
+                    <p>
+                      {room.roomRoles.length} 个角色 · {room._count.messages} 条消息 ·{' '}
+                      {room.owner.displayName}
+                    </p>
+                  </div>
+                  <span className="status">{roomStatusLabel(room.status)}</span>
+                </Link>
+                {!room.isMember && (
+                  <button
+                    className="join-btn"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void applyToJoin(room.id);
+                    }}
+                    disabled={room.isPending}
+                  >
+                    {room.isPending ? '已申请' : '申请加入'}
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         )}

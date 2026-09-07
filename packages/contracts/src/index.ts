@@ -111,7 +111,7 @@ export const RunSettingsSchema = z.object({
   /** 单角色最大连续发言次数 */
   maxConsecutiveTurns: z.number().int().min(1).max(10).default(2),
   /** 单次 AI 发言最大输出 tokens */
-  maxTokensPerMessage: z.number().int().min(1).max(8000).default(800),
+  maxTokensPerMessage: z.number().int().min(1).max(8000).default(1500),
   /** 单次讨论总输出预算 tokens */
   tokenBudget: z.number().int().min(1).max(10_000_000).default(12_000),
   /** 单次讨论最长运行时间（分钟） */
@@ -131,7 +131,7 @@ export type RunSettings = z.infer<typeof RunSettingsSchema>;
 export const DEFAULT_RUN_SETTINGS: RunSettings = {
   maxRounds: 20,
   maxConsecutiveTurns: 2,
-  maxTokensPerMessage: 800,
+  maxTokensPerMessage: 1500,
   tokenBudget: 12_000,
   timeLimitMinutes: 30,
   repetitionThreshold: 3,
@@ -505,6 +505,11 @@ export const JoinRequestInputSchema = z.object({
   intent: MembershipIntentSchema.default('discuss'),
 });
 export type JoinRequestInput = z.infer<typeof JoinRequestInputSchema>;
+
+export const InviteInputSchema = z.object({
+  email: z.string().email(),
+});
+export type InviteInput = z.infer<typeof InviteInputSchema>;
 
 export const MembershipApproveInputSchema = z.object({
   roleId: z.string().uuid().nullable().optional(),

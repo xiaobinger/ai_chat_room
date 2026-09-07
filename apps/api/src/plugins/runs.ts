@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '@tianma/database';
 import { runTransition, type RunEvent } from '@tianma/ai-core';
 import {
+  DEFAULT_RUN_SETTINGS,
   DiscussionRunSchema,
   MessageSchema,
   RunCommandSchema,
@@ -99,6 +100,42 @@ export const runsPlugin: FastifyPluginAsync = async (fastify) => {
         role: message.role ?? null,
       })),
     };
+  });
+
+  /**
+   * 重启讨论：在同一房间创建新 Run，复制旧 Run 的配置（topic/goal/settings），
+   * 轮次归零、token 预算重置。旧 Run 保持终态不变（可追溯）。
+   * 房间角色无需复制——它们属于房间而非 Run。
+   */
+  fastify.post('/rooms/:roomId/runs/:runId/restart', async (request, reply) => {
+    const { roomId, runId } = request.params as { roomId: string; runId: string };
+    const access = await roomAccess(request, roomId, 'owner');
+
+    const previous = await prisma.discussionRun.findFirst({
+      where: { id: runId, roomId },
+      select: { topic: true, goal: true, completionCriteria: true, settings: true },
+    });
+    if (!previous) return reply.status(404).send({ error: 'run_not_found' });
+
+    const speakable = await prisma.roomRole.count({ where: { roomId } });
+    if (speakable === 0) return reply.status(400).send({ error: 'no_speakable_agent' });
+
+    const run = await prisma.discussionRun.create({
+      data: {
+        roomId,
+        topic: previous.topic,
+        goal: previous.goal,
+        completionCriteria: previous.completionCriteria,
+        status: 'queued',
+        settings: previous.settings ?? { ...DEFAULT_RUN_SETTINGS },
+        createdBy: access.user.id,
+      },
+    });
+
+    await prisma.room.update({ where: { id: roomId }, data: { status: 'running' } });
+    await runQueue.add('run', { runId: run.id, action: 'run' }, { jobId: `run:${run.id}:restart` });
+
+    return reply.status(201).send(run);
   });
 
   fastify.post('/rooms/:roomId/runs/:runId/commands', async (request, reply) => {

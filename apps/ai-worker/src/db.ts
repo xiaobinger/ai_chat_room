@@ -101,6 +101,7 @@ export interface RunStore {
     data: Partial<Omit<AgentStateRecord, 'roleId'>>,
   ): Promise<void>;
   getContext(runId: string, limit: number): Promise<ContextRecord[]>;
+  hasRecentHumanMessage(runId: string, lookback: number): Promise<boolean>;
   saveScheduleAudit(runId: string, round: number, payload: unknown): Promise<void>;
   messageForEvent(id: string): Promise<StoredMessage | null>;
   getActivePolicy(roomId: string): Promise<ActivePolicy | null>;
@@ -356,6 +357,17 @@ export class RunRepository implements RunStore {
     }));
   }
 
+  /** 最近 N 条消息中是否有人类发言 —— 用于导演判断是否需要优先回应人类。 */
+  async hasRecentHumanMessage(runId: string, lookback: number): Promise<boolean> {
+    const messages = await prisma.message.findMany({
+      where: { runId, status: 'completed', senderType: 'user' },
+      orderBy: { sequence: 'desc' },
+      take: lookback,
+      select: { id: true },
+    });
+    return messages.length > 0;
+  }
+
   /** 最近若干条已完成发言，供重复检测取滑动窗口。 */
   async getRecentAgentContents(
     runId: string,
@@ -385,8 +397,8 @@ export class RunRepository implements RunStore {
   }
 
   async getPenaltyLevel(roomId: string, targetRoleId: string): Promise<number> {
-    const state = await prisma.penaltyState.findUnique({
-      where: { roomId_targetRoleId: { roomId, targetRoleId } },
+    const state = await prisma.penaltyState.findFirst({
+      where: { roomId, targetRoleId, targetUserId: null },
       select: { level: true },
     });
     return state?.level ?? 0;
@@ -500,17 +512,25 @@ export class RunRepository implements RunStore {
         },
       });
 
-      await tx.penaltyState.upsert({
-        where: { roomId_targetRoleId: { roomId: input.roomId, targetRoleId: input.targetRoleId } },
-        update: { level: input.penaltyLevel, lastRunId: input.runId, lastEventId: event.id },
-        create: {
-          roomId: input.roomId,
-          targetRoleId: input.targetRoleId,
-          level: input.penaltyLevel,
-          lastRunId: input.runId,
-          lastEventId: event.id,
-        },
+      const existing = await tx.penaltyState.findFirst({
+        where: { roomId: input.roomId, targetRoleId: input.targetRoleId, targetUserId: null },
       });
+      if (existing) {
+        await tx.penaltyState.update({
+          where: { id: existing.id },
+          data: { level: input.penaltyLevel, lastRunId: input.runId, lastEventId: event.id },
+        });
+      } else {
+        await tx.penaltyState.create({
+          data: {
+            roomId: input.roomId,
+            targetRoleId: input.targetRoleId,
+            level: input.penaltyLevel,
+            lastRunId: input.runId,
+            lastEventId: event.id,
+          },
+        });
+      }
 
       if (input.roleState) {
         await tx.runAgentState.upsert({

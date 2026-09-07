@@ -111,6 +111,7 @@ export function describeError(error: unknown): string {
     policy_invalid: '规则配置有冲突项，请检查下方标出的字段',
     policy_version_conflict: '有人同时发布了新规则，请刷新后重试',
     kick_requires_prior_warning: '移出之前需要先有过警告或禁言',
+    user_muted: '你已被房主禁言，暂时无法发言',
     unknown_transition: '当前状态不允许这个操作',
     concurrent_update: '讨论状态刚被他人改变，请重试',
     invalid_input: '填写内容有不合规的地方',

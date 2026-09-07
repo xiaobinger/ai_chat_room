@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import {
+  InviteInputSchema,
   JoinRequestInputSchema,
   MembershipApproveInputSchema,
   PublicUserSchema,
@@ -57,6 +58,36 @@ export const membershipsPlugin: FastifyPluginAsync = async (fastify) => {
 
     const membership = await prisma.membership.create({
       data: { roomId, userId: user.id, status: 'invited', intent: parsed.data.intent },
+      select: { id: true, status: true, intent: true },
+    });
+    return reply.status(201).send(membership);
+  });
+
+  /** 房主主动邀请：提供被邀请人 email，直接创建 invited 记录。 */
+  fastify.post('/rooms/:roomId/invite', async (request, reply) => {
+    const { roomId } = request.params as { roomId: string };
+    const access = await roomAccess(request, roomId, 'owner');
+    const parsed = InviteInputSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'invalid_input', issues: parsed.error.issues });
+    }
+
+    const target = await prisma.user.findUnique({
+      where: { email: parsed.data.email },
+      select: { id: true },
+    });
+    if (!target) return reply.status(404).send({ error: 'user_not_found' });
+    if (target.id === access.user.id) return reply.status(400).send({ error: 'cannot_invite_self' });
+
+    const existing = await prisma.membership.findUnique({
+      where: { roomId_userId: { roomId, userId: target.id } },
+      select: { status: true },
+    });
+    if (existing?.status === 'approved') return reply.status(200).send({ status: 'approved' });
+    if (existing?.status === 'invited') return reply.status(200).send({ status: 'invited' });
+
+    const membership = await prisma.membership.create({
+      data: { roomId, userId: target.id, status: 'invited', intent: 'discuss' },
       select: { id: true, status: true, intent: true },
     });
     return reply.status(201).send(membership);

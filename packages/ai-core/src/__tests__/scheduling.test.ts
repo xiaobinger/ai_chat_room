@@ -18,7 +18,7 @@ describe('run settings (mvp-spec §5)', () => {
     expect(parseRunSettings({})).toEqual({ ok: true, settings: DEFAULT_RUN_SETTINGS });
     expect(settings.maxRounds).toBe(20);
     expect(settings.maxConsecutiveTurns).toBe(2);
-    expect(settings.maxTokensPerMessage).toBe(800);
+    expect(settings.maxTokensPerMessage).toBe(1500);
     expect(settings.tokenBudget).toBe(12_000);
     expect(settings.timeLimitMinutes).toBe(30);
     expect(settings.repetitionThreshold).toBe(3);

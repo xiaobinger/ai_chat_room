@@ -246,8 +246,10 @@ model Membership {
   roleId   String?          @db.VarChar(36)
   status   MembershipStatus @default(invited)
   intent   MembershipIntent @default(discuss)
-  joinedAt DateTime?        @db.DateTime(3)
-  leftAt   DateTime?        @db.DateTime(3)
+  joinedAt        DateTime?        @db.DateTime(3)
+  leftAt          DateTime?        @db.DateTime(3)
+  /// 房主禁言到指定轮次（NULL 表示未被禁言）。人类成员专用。
+  mutedUntilRound Int?
 
   room Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -425,8 +427,10 @@ model ModerationEvent {
 /// 处罚阶梯游标（mvp-spec §3.5：提醒 → 警告 → 限时禁言 → 移出）。
 /// 房间级而非 Run 级：跨 Run 保留阶梯，避免"新 Run 里未警告即移出"违反 permissions §4
 model PenaltyState {
+  id            String   @id @default(uuid()) @db.VarChar(36)
   roomId        String   @db.VarChar(36)
-  targetRoleId  String   @db.VarChar(36)
+  targetRoleId  String?  @db.VarChar(36)
+  targetUserId  String?  @db.VarChar(36)
   /// 0=无 1=提醒 2=警告 3=限时禁言 4=移出
   level         Int      @default(0)
   lastRunId     String?  @db.VarChar(36)
@@ -434,10 +438,11 @@ model PenaltyState {
   updatedAt     DateTime @updatedAt @db.DateTime(3)
 
   room       Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  targetRole RoomRole       @relation(fields: [targetRoleId], references: [id], onDelete: Cascade)
+  targetRole RoomRole?      @relation(fields: [targetRoleId], references: [id], onDelete: Cascade)
   lastRun    DiscussionRun? @relation(fields: [lastRunId], references: [id], onDelete: SetNull)
 
-  @@id([roomId, targetRoleId])
+  @@unique([roomId, targetRoleId, targetUserId])
+  @@index([roomId])
 }
 
 /// 讨论复盘（mvp-spec §3.6：摘要必须可追溯到原始消息，不作为原消息替代品）

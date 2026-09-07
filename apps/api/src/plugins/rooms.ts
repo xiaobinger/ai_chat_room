@@ -18,6 +18,7 @@ import {
 import { roomAccess, authedUser, Forbidden } from '../auth/guards';
 import { roomGateway } from '../ws/room-gateway';
 import { messageEvent } from '../lib/events';
+import { moderateHumanMessage } from '../lib/human-moderation';
 import { runQueue } from '../queue';
 
 const ROOM_LIST_ITEM = {
@@ -64,13 +65,22 @@ export const roomsPlugin: FastifyPluginAsync = async (fastify) => {
         ...ROOM_LIST_ITEM,
         owner: { select: { id: true, displayName: true, avatarColor: true, createdAt: true } },
         roomRoles: { select: { id: true, name: true, type: true, color: true }, orderBy: { createdAt: 'asc' } },
+        memberships: { where: { userId: user.id }, select: { status: true }, take: 1 },
         _count: { select: { messages: true, runs: true, memberships: true } },
       },
     });
-    return rooms.map((room) => ({
-      ...room,
-      owner: PublicUserSchema.parse(room.owner),
-    }));
+    return rooms.map((room) => {
+      const membership = room.memberships[0];
+      const isMember = room.owner.id === user.id || membership?.status === 'approved';
+      const isPending = membership?.status === 'invited';
+      return {
+        ...room,
+        owner: PublicUserSchema.parse(room.owner),
+        isMember,
+        isPending,
+        memberships: undefined,
+      };
+    });
   });
 
   fastify.post('/', async (request, reply) => {
@@ -228,6 +238,33 @@ export const roomsPlugin: FastifyPluginAsync = async (fastify) => {
     if (!access.isOwner && !access.room.membersCanChat) {
       return reply.status(403).send({ error: 'members_cannot_chat' });
     }
+    // 检查人类成员是否被房主禁言
+    if (!access.isOwner && access.isMember) {
+      const membership = await prisma.membership.findUnique({
+        where: { roomId_userId: { roomId, userId: access.user.id } },
+        select: { mutedUntilRound: true },
+      });
+      if (membership?.mutedUntilRound != null) {
+        const runId = await prisma.discussionRun.findFirst({
+          where: { roomId, status: { in: ['running', 'paused'] } },
+          orderBy: { createdAt: 'desc' },
+          select: { currentRound: true },
+        });
+        const currentRound = runId?.currentRound ?? 0;
+        if (membership.mutedUntilRound >= currentRound) {
+          return reply.status(403).send({
+            error: 'user_muted',
+            mutedUntilRound: membership.mutedUntilRound,
+            currentRound,
+          });
+        }
+        // 已过期，自动清除
+        await prisma.membership.update({
+          where: { roomId_userId: { roomId, userId: access.user.id } },
+          data: { mutedUntilRound: null },
+        });
+      }
+    }
     const parsed = SendMessageInputSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'invalid_input', issues: parsed.error.issues });
@@ -249,6 +286,10 @@ export const roomsPlugin: FastifyPluginAsync = async (fastify) => {
 
     const event = await messageEvent(created.id);
     if (event) roomGateway.broadcast(roomId, event);
+
+    // 人类发言后异步做治理检测（不影响消息创建响应）
+    void moderateHumanMessage({ roomId, runId: parsed.data.runId ?? null, messageId: created.id, userId: access.user.id });
+
     return reply.status(201).send(created);
   });
 

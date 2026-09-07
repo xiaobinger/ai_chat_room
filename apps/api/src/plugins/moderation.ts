@@ -86,6 +86,51 @@ async function applyRoleEffect(
   return { state: from, mutedUntilRound: existing?.mutedUntilRound ?? 0 };
 }
 
+/**
+ * 对人类成员执行禁言/移出。
+ * - mute：写 Membership.mutedUntilRound，期限内无法发言
+ * - kick：设 status='left' + leftAt，用户被移出房间
+ */
+async function applyUserEffect(
+  roomId: string,
+  userId: string,
+  action: ModerationAction,
+  durationRounds: number,
+): Promise<{ state: string; mutedUntilRound: number }> {
+  const runId = await activeRunId(roomId);
+  const round = runId ? await currentRoundOf(runId) : 0;
+
+  if (action === 'mute') {
+    const mutedUntilRound = round + durationRounds;
+    await prisma.membership.updateMany({
+      where: { roomId, userId, status: 'approved' },
+      data: { mutedUntilRound },
+    });
+    return { state: 'muted', mutedUntilRound };
+  }
+
+  if (action === 'kick') {
+    await prisma.membership.updateMany({
+      where: { roomId, userId, status: 'approved' },
+      data: { status: 'left', leftAt: new Date() },
+    });
+    return { state: 'removed', mutedUntilRound: 0 };
+  }
+
+  return { state: '', mutedUntilRound: 0 };
+}
+
+/** 撤销对人类成员的处罚：mute 清除 mutedUntilRound；kick 无法自动恢复（需重新加入） */
+async function revertUserEffect(roomId: string, userId: string, action: ModerationAction): Promise<void> {
+  if (action === 'mute') {
+    await prisma.membership.updateMany({
+      where: { roomId, userId },
+      data: { mutedUntilRound: null },
+    });
+  }
+  // kick 不自动恢复：用户必须重新申请或被邀请
+}
+
 async function revertRoleEffect(
   roomId: string,
   roleId: string,
@@ -158,6 +203,13 @@ export const moderationPlugin: FastifyPluginAsync = async (fastify) => {
       const role = await prisma.roomRole.findFirst({ where: { id: targetRoleId, roomId }, select: { id: true } });
       if (!role) return reply.status(400).send({ error: 'role_not_in_room' });
     }
+    if (targetUserId) {
+      const member = await prisma.membership.findFirst({
+        where: { roomId, userId: targetUserId, status: 'approved' },
+        select: { id: true },
+      });
+      if (!member) return reply.status(400).send({ error: 'user_not_member' });
+    }
     if (evidenceMessageId) {
       // 证据必须来自本房间，否则等于把别人的消息挂来做"依据"
       const evidence = await prisma.message.findFirst({
@@ -178,7 +230,7 @@ export const moderationPlugin: FastifyPluginAsync = async (fastify) => {
       durationRounds = settings?.defaultMuteRounds ?? 3;
     }
 
-    // permissions §4：移出前必须已有未被撤销的警告或禁言记录
+    // permissions §4：移出 AI 角色前必须已有未被撤销的警告或禁言记录；人类成员无此约束
     if (action === 'kick' && targetRoleId) {
       const prior = await prisma.moderationEvent.count({
         where: { roomId, targetRoleId, action: { in: ['warn', 'mute'] }, revertedAt: null },
@@ -190,7 +242,9 @@ export const moderationPlugin: FastifyPluginAsync = async (fastify) => {
 
     const applied =
       action === 'mute' || action === 'kick'
-        ? await applyRoleEffect(roomId, targetRoleId ?? '', action, durationRounds ?? 3)
+        ? targetRoleId
+          ? await applyRoleEffect(roomId, targetRoleId, action, durationRounds ?? 3)
+          : await applyUserEffect(roomId, targetUserId ?? '', action, durationRounds ?? 3)
         : { state: '', mutedUntilRound: 0 };
 
     const event = await prisma.moderationEvent.create({
@@ -213,24 +267,41 @@ export const moderationPlugin: FastifyPluginAsync = async (fastify) => {
     });
 
     if (targetRoleId) {
-      await prisma.penaltyState.upsert({
-        where: { roomId_targetRoleId: { roomId, targetRoleId } },
-        update: { level: Math.max(ACTION_LEVEL[action], 0), lastEventId: event.id },
-        create: {
-          roomId,
-          targetRoleId,
-          level: ACTION_LEVEL[action],
-          lastEventId: event.id,
-          lastRunId: event.runId,
-        },
+      const rolePenalty = await prisma.penaltyState.findFirst({
+        where: { roomId, targetRoleId, targetUserId: null },
       });
+      if (rolePenalty) {
+        await prisma.penaltyState.update({
+          where: { id: rolePenalty.id },
+          data: { level: Math.max(ACTION_LEVEL[action], 0), lastEventId: event.id },
+        });
+      } else {
+        await prisma.penaltyState.create({
+          data: { roomId, targetRoleId, level: ACTION_LEVEL[action], lastEventId: event.id, lastRunId: event.runId },
+        });
+      }
+    } else if (targetUserId) {
+      const userPenalty = await prisma.penaltyState.findFirst({
+        where: { roomId, targetRoleId: null, targetUserId },
+      });
+      if (userPenalty) {
+        await prisma.penaltyState.update({
+          where: { id: userPenalty.id },
+          data: { level: Math.max(ACTION_LEVEL[action], 0), lastEventId: event.id },
+        });
+      } else {
+        await prisma.penaltyState.create({
+          data: { roomId, targetUserId, level: ACTION_LEVEL[action], lastEventId: event.id, lastRunId: event.runId },
+        });
+      }
     }
 
+    const targetLabel = targetRoleId ? `角色 ${targetRoleId}` : `用户 ${targetUserId}`;
     const notice = await appendRoomMessage(prisma, {
       roomId,
       runId: event.runId,
       senderType: 'moderator',
-      content: `治理动作：${ACTION_LABELS[action]}${targetRoleId ? `（角色 ${targetRoleId}）` : ''}，理由：${reason}`,
+      content: `治理动作：${ACTION_LABELS[action]}（${targetLabel}），理由：${reason}`,
     });
 
     roomGateway.broadcast(roomId, {
@@ -256,7 +327,7 @@ export const moderationPlugin: FastifyPluginAsync = async (fastify) => {
 
     const event = await prisma.moderationEvent.findFirst({
       where: { id: eventId, roomId },
-      select: { id: true, action: true, targetRoleId: true, revertedAt: true },
+      select: { id: true, action: true, targetRoleId: true, targetUserId: true, revertedAt: true },
     });
     if (!event) return reply.status(404).send({ error: 'event_not_found' });
     if (event.revertedAt) return reply.status(409).send({ error: 'already_revoked' });
@@ -274,7 +345,13 @@ export const moderationPlugin: FastifyPluginAsync = async (fastify) => {
     if (event.targetRoleId) {
       await revertRoleEffect(roomId, event.targetRoleId, event.action);
       await prisma.penaltyState.updateMany({
-        where: { roomId, targetRoleId: event.targetRoleId },
+        where: { roomId, targetRoleId: event.targetRoleId, targetUserId: null },
+        data: { level: 0, lastEventId: updated.id },
+      });
+    } else if (event.targetUserId) {
+      await revertUserEffect(roomId, event.targetUserId, event.action);
+      await prisma.penaltyState.updateMany({
+        where: { roomId, targetUserId: event.targetUserId, targetRoleId: null },
         data: { level: 0, lastEventId: updated.id },
       });
     }

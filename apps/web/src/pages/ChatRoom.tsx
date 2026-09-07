@@ -188,6 +188,16 @@ export default function ChatRoom() {
     }
   };
 
+  const restart = async () => {
+    if (!run) return;
+    try {
+      await api('POST', `/rooms/${id}/runs/${run.id}/restart`, {});
+      await reload();
+    } catch (error) {
+      setProblem(describeError(error));
+    }
+  };
+
   const startDiscussion = async () => {
     try {
       await api('POST', `/rooms/${id}/start`, {
@@ -229,6 +239,36 @@ export default function ChatRoom() {
   const decide = async (membershipId: string, action: 'approve' | 'reject') => {
     try {
       await api('POST', `/rooms/${id}/memberships/${membershipId}/${action}`, {});
+      await reload();
+    } catch (error) {
+      setProblem(describeError(error));
+    }
+  };
+
+  const moderateUser = async (targetUserId: string, action: 'mute' | 'kick') => {
+    try {
+      await api('POST', `/rooms/${id}/moderation`, { action, targetUserId, reason: action === 'mute' ? '房主手动禁言' : '房主手动移出' });
+      await reload();
+    } catch (error) {
+      setProblem(describeError(error));
+    }
+  };
+
+  const moderateRole = async (targetRoleId: string, action: 'mute' | 'kick') => {
+    try {
+      await api('POST', `/rooms/${id}/moderation`, { action, targetRoleId, reason: action === 'mute' ? '房主手动禁言' : '房主手动移出' });
+      await reload();
+    } catch (error) {
+      setProblem(describeError(error));
+    }
+  };
+
+  const [inviteEmail, setInviteEmail] = useState('');
+  const invite = async () => {
+    if (!inviteEmail) return;
+    try {
+      await api('POST', `/rooms/${id}/invite`, { email: inviteEmail });
+      setInviteEmail('');
       await reload();
     } catch (error) {
       setProblem(describeError(error));
@@ -378,6 +418,12 @@ export default function ChatRoom() {
             <Octagon />
             终止
           </button>
+          {terminal && room.isOwner && (
+            <button className="play" onClick={() => void restart()}>
+              <CirclePlay />
+              重启讨论
+            </button>
+          )}
           {!run && (
             <button className="play" onClick={() => void startDiscussion()}>
               <CirclePlay />
@@ -420,6 +466,16 @@ export default function ChatRoom() {
                 <b>{role.name}</b>
                 <small>{runStateLabel(state)}</small>
               </div>
+              {room.isOwner && state !== 'removed' && (
+                <div className="member-actions">
+                  <button className="mute" onClick={() => void moderateRole(role.id, 'mute')}>
+                    禁言
+                  </button>
+                  <button className="reject" onClick={() => void moderateRole(role.id, 'kick')}>
+                    移出
+                  </button>
+                </div>
+              )}
               <i className={state} />
             </div>
           );
@@ -441,6 +497,25 @@ export default function ChatRoom() {
           </p>
           <Link to={`/rooms/${room.id}/moderation`}>查看完整规则 →</Link>
         </div>
+
+        {room.isOwner && (
+          <div className="member-section">
+            <div className="panelhead">
+              <span>邀请成员</span>
+            </div>
+            <div className="invite-row">
+              <input
+                type="email"
+                placeholder="输入邮箱邀请"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+              />
+              <button className="approve" onClick={() => void invite()} disabled={!inviteEmail}>
+                邀请
+              </button>
+            </div>
+          </div>
+        )}
 
         {room.isOwner && (
           <div className="member-section">
@@ -480,8 +555,24 @@ export default function ChatRoom() {
               </span>
               <div>
                 <b>{member.user.displayName}</b>
-                <small>{member.user.id === room.ownerId ? '房主' : member.intent === 'discuss' ? '参与讨论' : '潜水观察'}</small>
+                <small>
+                  {member.user.id === room.ownerId
+                    ? '房主'
+                    : member.intent === 'discuss'
+                      ? '参与讨论'
+                      : '潜水观察'}
+                </small>
               </div>
+              {room.isOwner && member.user.id !== room.ownerId && (
+                <div className="member-actions">
+                  <button className="mute" onClick={() => void moderateUser(member.user.id, 'mute')}>
+                    禁言
+                  </button>
+                  <button className="reject" onClick={() => void moderateUser(member.user.id, 'kick')}>
+                    移出
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
