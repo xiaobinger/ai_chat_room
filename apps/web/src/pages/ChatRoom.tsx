@@ -174,8 +174,10 @@ export default function ChatRoom() {
   const budget = run?.settings.tokenBudget ?? 0;
   const maxRounds = run?.settings.maxRounds ?? 20;
   const currentRound = feed.run?.currentRound ?? run?.currentRound ?? 0;
-  const running = feed.run ? feed.run.status === 'running' : run?.status === 'running';
-  const queued = feed.run ? feed.run.status === 'queued' : run?.status === 'queued';
+  const runStatus = feed.run?.status ?? run?.status;
+  const running = runStatus === 'running';
+  const queued = runStatus === 'queued';
+  const paused = runStatus === 'paused';
   const terminal = run ? ['completed', 'terminated'].includes(run.status) : false;
 
   const command = async (body: Record<string, unknown>) => {
@@ -403,17 +405,19 @@ export default function ChatRoom() {
         </div>
 
         <div className="control">
-          {running || queued ? (
-            <button className="pause" onClick={() => void command({ command: 'pause' })} disabled={!running}>
+          {running ? (
+            <button className="pause" onClick={() => void command({ command: 'pause' })}>
               <CirclePause />
               暂停讨论
             </button>
-          ) : (
-            <button className="play" onClick={() => void command({ command: 'resume' })} disabled={terminal}>
+          ) : paused ? (
+            <button className="play" onClick={() => void command({ command: 'resume' })}>
               <CirclePlay />
               继续讨论
             </button>
-          )}
+          ) : queued ? (
+            <span className="queued-hint">排队中...</span>
+          ) : null}
           <button onClick={() => void command({ command: 'terminate', terminationReason: 'owner_terminated' })} disabled={!run || terminal}>
             <Octagon />
             终止

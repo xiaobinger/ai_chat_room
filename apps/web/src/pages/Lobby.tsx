@@ -5,6 +5,7 @@ import type { PublicUser } from '@tianma/contracts';
 import { api } from '../lib/api';
 import { roomStatusLabel } from '../lib/format';
 import { Notice, Shell, Top } from '../components/Shell';
+import { useAuth } from '../context/AuthContext';
 
 interface RoomListItem {
   id: string;
@@ -24,6 +25,7 @@ interface RoomListItem {
 }
 
 export default function Lobby() {
+  const { user } = useAuth();
   const [rooms, setRooms] = useState<RoomListItem[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -130,9 +132,9 @@ export default function Lobby() {
                   </div>
                   <span className="status">{roomStatusLabel(room.status)}</span>
                 </Link>
-                {!room.isMember && (
+                {!room.isMember && room.ownerId !== user?.id && (
                   <button
-                    className="join-btn"
+                    className={`join-btn ${room.isPending ? 'pending' : ''}`}
                     onClick={(e) => {
                       e.preventDefault();
                       void applyToJoin(room.id);

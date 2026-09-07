@@ -28,6 +28,8 @@ echo "==> 1/5 安装依赖"
 pnpm install --frozen-lockfile
 
 echo "==> 2/5 Prisma generate + migrate"
+# 强制重新生成客户端，避免 node_modules 缓存旧版本导致字段缺失
+rm -rf node_modules/.prisma/client
 pnpm db:generate
 pnpm db:migrate
 

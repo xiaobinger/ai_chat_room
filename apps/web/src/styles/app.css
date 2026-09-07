@@ -43,3 +43,19 @@ cite,.cite-list{display:block}
 .rule select{margin-left:8px}
 .summary p em{color:#ff9b91;font-size:11px}
 .message.flash{outline:1px solid #8e78ff;border-radius:12px}
+
+/* === 本轮新增按钮样式 === */
+.roomcard{position:relative}
+.roomcard-main{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;flex:1}
+.join-btn{border:0;border-radius:8px;padding:8px 14px;font-size:11px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#7457ff,#9c88ff);color:#fff;box-shadow:0 4px 15px #7457ff44;transition:all .2s}
+.join-btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px #7457ff66}
+.join-btn.pending,.join-btn:disabled{background:#2a2b35;color:#8e90a0;box-shadow:none;cursor:default;transform:none}
+.member-actions .mute{border:0;border-radius:6px;padding:5px 8px;font-size:10px;cursor:pointer;font-weight:700;background:#2a2520;color:#ffbd75}
+.member-actions .mute:hover{background:#3a2f28}
+.member-actions .reject:hover{background:#3a2024}
+.invite-row{display:flex;gap:8px;margin-top:10px}
+.invite-row input{flex:1;border:1px solid #30313b;background:#0d0e13;color:#fff;border-radius:8px;padding:8px 10px;font-size:11px}
+.invite-row button{border:0;border-radius:8px;padding:8px 14px;font-size:11px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#7457ff,#9c88ff);color:#fff;white-space:nowrap}
+.invite-row button:disabled{opacity:.5;cursor:default}
+.queued-hint{font-size:11px;color:#8e90a0;padding:9px 11px;border:1px dashed #30313a;border-radius:9px;text-align:center}
+.control .restart{background:linear-gradient(135deg,#5ee9a3,#3dbb80);color:#0a0b10;border:0}
