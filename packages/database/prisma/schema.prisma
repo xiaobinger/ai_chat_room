@@ -175,7 +175,7 @@ model Room {
   description  String         @default("") @db.VarChar(500)
   mode         DiscussionMode @default(free)
   status       RoomStatus     @default(draft)
-  visibility   RoomVisibility @default(private)
+  visibility   RoomVisibility @default(public)
   language     String         @default("zh-CN") @db.VarChar(16)
   ownerId      String         @db.VarChar(36)
 
