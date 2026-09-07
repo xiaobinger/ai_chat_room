@@ -1,20 +1,64 @@
 name: CI
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
+
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: tianma_chat
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: "mysql://root:root@127.0.0.1:3306/tianma_chat"
+      REDIS_URL: "redis://127.0.0.1:6379"
+      QUEUE_DRIVER: "memory"
+      JWT_SECRET: "ci-test-secret-do-not-use-in-production"
+      DEFAULT_MODEL: "mock"
+      MODELS_CONFIG: '[{"name":"mock","provider":"mock","apiKey":""}]'
+      NODE_ENV: "test"
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
+
       - run: pnpm install --frozen-lockfile
+
+      - name: Prisma generate + migrate
+        run: |
+          pnpm db:generate
+          pnpm db:migrate
+
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test

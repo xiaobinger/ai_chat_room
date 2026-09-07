@@ -42,6 +42,9 @@
     "db:studio": "prisma studio --schema packages/database/prisma/schema.prisma",
     "db:seed": "pnpm --filter @tianma/database seed",
     "db:setup": "pnpm db:generate && pnpm db:migrate && pnpm db:seed",
-    "setup": "pnpm install && pnpm db:setup"
+    "setup": "pnpm install && pnpm db:setup",
+    "start:api": "pnpm --filter @tianma/api start",
+    "start:worker": "pnpm --filter @tianma/ai-worker start",
+    "release": "bash scripts/release.sh"
   }
 }
