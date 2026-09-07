@@ -114,9 +114,19 @@ pnpm typecheck
 
 三个都支持用 `.env` 里的真实凭据；`verify:queue` 要求 `QUEUE_DRIVER=bullmq`，否则直接拒绝运行而不是在内存队列上"假装通过"。
 
+## 部署
+
+裸机 + PM2 + nginx，无 Docker。详见 `docs/deployment.md`。
+
+| 目的 | 命令 |
+|---|---|
+| 本地起 API（调试） | `pnpm start:api` |
+| 本地起 Worker（调试） | `pnpm start:worker` |
+| 一键发布 | `bash scripts/release.sh` |
+| 发布 + PM2 重载 | `RELOAD_PM2=1 bash scripts/release.sh` |
+
+PM2 配置在 `ecosystem.config.cjs`（双进程：`tianma-api` + `tianma-worker`），nginx 配置在 `deploy/nginx-tianma.conf`。
+
 ## 已知未完成
 
-- ESLint 配置还没建，`pnpm lint` 目前会失败（见决策 004 第 1 条）。
-- CI 里的 MySQL/Redis service 还没接。
-- 部署产物（`ecosystem.config.cjs`、nginx 配置、`release.sh`、`docs/deployment.md`）待补。
 - 点名下一位发言者（`mvp-spec §3.4`）尚未实现；`SendMessageInputSchema.mentionRoleId` 目前没有消费者。

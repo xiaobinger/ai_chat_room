@@ -193,16 +193,34 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 ### 当前状态
 - 全仓 `pnpm typecheck` 零错误（含根 `scripts/`）；189 个单测全绿。
 - `mvp-spec §9` 七条验收条件全部用真实进程拓扑实测通过，见 `docs/verification.md`。
-- 尚未完成：ESLint 配置（`pnpm lint` 现在必然失败）、CI service containers、
-  部署产物（`ecosystem.config.cjs` / nginx / `release.sh` / `docs/deployment.md`）、
-  `apps/web` 界面接线、`mvp-spec §3.4` 的点名发言。
+- `pnpm lint` 全通（7 包通过，仅 5 条 no-console warning）。
+- CI workflow 已接 MySQL 8 + Redis 7 service containers。
+- 部署产物齐全：`ecosystem.config.cjs` / nginx / `release.sh` / `docs/deployment.md`。
+- `apps/web` 已接通后端，浏览器实测全链路通过。
+- 尚未完成：`mvp-spec §3.4` 的点名发言。
 
 ### 未结的安全事项
 - 模型 API Key 已明文落盘并进入会话上下文，建议轮换。
 - MySQL 仍用 `root`，`.env` 里已写好建最小权限账号的 SQL。
 - `JWT_SECRET` 强度不足。
-- 仓库尚未纳入 git（只有 `.github`，没有 `.git`），CI 从未执行过。建 `.gitignore` 的工作已做完，
-  必须**先建 ignore 再 `git init`**，否则首次 add 就把 `.env` 收进去。
+- 仓库已纳入 git（3 个初始 commit + 2 个 WP8 commit），CI workflow 已配置但尚未在 GitHub 上实际跑过。
+
+## 2026-09-07：WP8 工程收尾（ESLint + CI + 部署）
+
+### 关键事件
+- ESLint 9 flat config 修通：修复 JSDoc/ESM 解析冲突、移除 react-hooks 插件与 type-aware 规则。
+- 全量 lint 修复：`array-type` 自动修复（`Array<T>` → `T[]`）、`no-unused-vars` 手修、删除 stale disable 注释。
+- `.gitignore` 补 `.vite/` 缓存目录。
+- CI workflow 升级：分支改 master、加 MySQL 8.0 + Redis 7 service containers（healthcheck 就绪才跑测试）、加 prisma migrate 步骤。
+- 部署产物：`ecosystem.config.cjs`（PM2 双进程，worker kill_timeout=600s）、`deploy/nginx-tianma.conf`（反代 + WS 透传 + SPA）、`scripts/release.sh`（一键发布 + 回滚软链）、`docs/deployment.md`（架构图 + 安全清单）。
+- package.json 加 `start:api` / `start:worker` / `release` 脚本。
+- 文档同步：`docs/development.md` 加部署命令表、`docs/project-history.md` 更新当前状态。
+
+### 验证
+- `pnpm lint`：7 包全过，仅 5 条 no-console warning。
+- `pnpm typecheck`：零错误。
+- `pnpm build`：前端 1728 modules 构建成功。
+- `pnpm test`：189 测试全绿（ai-core 78 + queue 22 + ai-worker 58 + api 31）。
 
 ## 项目历程总结
 
@@ -213,7 +231,7 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 | 2026-09-03 | 门 C 启动 | Monorepo + 门 C 通过 + UI 素材 + 项目历程 | ✅ |
 | 2026-09-03 | 门 C 工程 | 各包骨架；因迁移中途丢失源码而整体不可编译 | ⚠️ 已被重建 |
 | 2026-09-04~06 | 阶段 C 重建 | 契约+schema+队列+Worker+鉴权+治理+复盘；§9 七条验收实测通过 | ✅ |
-| 待定 | 阶段 D 上线 | ESLint/CI/部署产物/apps/web 接线 | ⏳ |
+| 2026-09-07 | WP8 工程收尾 | ESLint 全通 + CI（MySQL/Redis）+ 部署产物 + 文档 | ✅ |
 
 ## 经验教训
 1. Windows 环境下工作区路径处理需要特别小心，`\\?\` 前缀会导致 CMD 和部分 Node 工具异常
@@ -235,8 +253,7 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
     错误全貌被系统性掩盖，排查时反复"修一个、再跑出下一个"。
 
 ## 下一步
-- 补 ESLint 配置与 CI（MySQL/Redis service containers），让 `pnpm verify` 四条全绿
-- 部署产物：`ecosystem.config.cjs`、nginx 反代配置、`scripts/release.sh`、`docs/deployment.md`
-- `apps/web` 按 `prototype/` 接线：登录 → 大厅 → 五步向导 → 聊天室 → 治理规则 → 复盘 → 角色工坊
 - 实现 `mvp-spec §3.4` 的点名下一位发言者（连同后端支持一起加，不留悬空契约字段）
-- 安全收尾：轮换模型 Key、MySQL 换最小权限账号、加强 `JWT_SECRET`、先 `.gitignore` 再 `git init`
+- 安全收尾：轮换模型 Key、MySQL 换最小权限账号、加强 `JWT_SECRET`
+- 推送到 GitHub 跑一次真实 CI，验证 MySQL/Redis service containers 在云端可用
+- 在目标裸机按 `docs/deployment.md` 走一遍首次部署，验证 `release.sh` 端到端
