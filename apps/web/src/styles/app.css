@@ -81,3 +81,17 @@ cite,.cite-list{display:block}
 
 .unmute-btn{border:0;border-radius:6px;padding:5px 8px;font-size:10px;cursor:pointer;font-weight:700;background:#1f2a24;color:#5ee9a3}
 .unmute-btn:hover{background:#2a3a2e}
+
+.roomicon.game{background:linear-gradient(135deg,#ff7eb3,#ff758c)}
+.roomicon.game.werewolf{background:linear-gradient(135deg,#8b0000,#dc143c)}
+.roomicon.game.murder_mystery{background:linear-gradient(135deg,#4a0080,#8b008b)}
+.roomicon.game.who_is_the_thief{background:linear-gradient(135deg,#006400,#228b22)}
+.status-badge{display:inline-block;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700}
+.status-badge.waiting{background:#2a2520;color:#ffbd75}
+.status-badge.ready{background:#1f2a24;color:#5ee9a3}
+.status-badge.playing{background:#1a1a2e;color:#ad9eff}
+.status-badge.finished{background:#2a2a35;color:#8e90a0}
+.ai-badge{display:inline-block;margin-left:6px;padding:1px 5px;background:#2a2440;color:#ad9eff;border-radius:4px;font-size:8px;font-weight:700}
+.game-state{background:#0d0e13;border-radius:8px;padding:16px;font-size:11px;color:#8e90a0;max-height:300px;overflow:auto;white-space:pre-wrap}
+.pick p{color:#858793;font-size:12px;margin:8px 0}
+.pick small{color:#777;font-size:10px}

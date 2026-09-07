@@ -9,6 +9,9 @@ import RoleStudio from './pages/RoleStudio';
 import ModeratorRules from './pages/ModeratorRules';
 import DiscussionReview from './pages/DiscussionReview';
 import Settings from './pages/Settings';
+import EntertainmentLobby from './pages/EntertainmentLobby';
+import GameRoomWizard from './pages/GameRoomWizard';
+import GameRoom from './pages/GameRoom';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -32,6 +35,9 @@ export default function App() {
       <Route path="/rooms/:id" element={guarded(<ChatRoom />)} />
       <Route path="/rooms/:id/moderation" element={guarded(<ModeratorRules />)} />
       <Route path="/rooms/:id/runs/:runId/review" element={guarded(<DiscussionReview />)} />
+      <Route path="/entertainment" element={guarded(<EntertainmentLobby />)} />
+      <Route path="/entertainment/new" element={guarded(<GameRoomWizard />)} />
+      <Route path="/entertainment/:id" element={guarded(<GameRoom />)} />
       <Route path="/roles" element={guarded(<RoleStudio />)} />
       <Route path="/settings" element={guarded(<Settings />)} />
       <Route path="*" element={<Navigate to="/" replace />} />

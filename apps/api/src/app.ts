@@ -17,6 +17,7 @@ import { runsPlugin } from './plugins/runs';
 import { moderationPlugin } from './plugins/moderation';
 import { policyPlugin } from './plugins/policy';
 import { profilesPlugin } from './plugins/profiles';
+import { entertainmentPlugin } from './plugins/entertainment';
 import { roomGateway } from './ws/room-gateway';
 
 const OPEN = 1;
@@ -122,6 +123,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.register(moderationPlugin, { prefix: '/api/v1' });
   app.register(policyPlugin, { prefix: '/api/v1' });
   app.register(profilesPlugin, { prefix: '/api/v1' });
+  app.register(entertainmentPlugin, { prefix: '/api/v1/entertainment' });
 
   /**
    * WebSocket 握手无法携带自定义请求头，所以只能从 ?token= 取，

@@ -569,6 +569,22 @@ export const WSEventSchema = z.discriminatedUnion('type', [
     type: z.literal('error'),
     payload: z.object({ message: z.string(), code: z.string().optional() }),
   }),
+  z.object({
+    type: z.literal('game_player_joined'),
+    payload: z.object({ player: z.object({ id: z.string(), nickname: z.string(), role: z.enum(['human', 'ai']) }) }),
+  }),
+  z.object({
+    type: z.literal('game_player_left'),
+    payload: z.object({ playerId: z.string() }),
+  }),
+  z.object({
+    type: z.literal('game_started'),
+    payload: z.object({ gameState: z.record(z.unknown()) }),
+  }),
+  z.object({
+    type: z.literal('game_action'),
+    payload: z.object({ playerId: z.string(), action: z.record(z.unknown()) }),
+  }),
 ]);
 export type WSEvent = z.infer<typeof WSEventSchema>;
 

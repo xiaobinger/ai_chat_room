@@ -14,6 +14,33 @@ enum DiscussionMode {
   free
 }
 
+/// 房间类型：讨论（现有）/ 娱乐（游戏）
+enum RoomType {
+  discussion
+  entertainment
+}
+
+/// 游戏类型
+enum GameType {
+  werewolf        // 狼人杀
+  murder_mystery  // 剧本杀
+  who_is_the_thief // 谁是凶手
+}
+
+/// 游戏状态
+enum GameStatus {
+  waiting    // 等待玩家加入
+  ready      // 人数已满，可开局
+  playing    // 游戏中
+  finished   // 已结束
+}
+
+/// 玩家类型
+enum PlayerRole {
+  human
+  ai
+}
+
 /// 房间生命周期。draft = 向导未走完（flows.md §1 完成信号）；archived = 归档（mvp-spec §3.1）
 enum RoomStatus {
   draft
@@ -145,6 +172,7 @@ model User {
   revertedEvents   ModerationEvent[] @relation("EventReverter")
   targetedEvents   ModerationEvent[] @relation("EventTargetUser")
   createdPolicies  ModeratorPolicy[] @relation("PolicyCreator")
+  gamePlayers      GamePlayer[]
 }
 
 /// 可复用角色模板（mvp-spec §4 AgentProfile；flows §2 完成信号）
@@ -165,6 +193,7 @@ model AgentProfile {
   updatedAt     DateTime @updatedAt @db.DateTime(3)
 
   roomRoles RoomRole[]
+  gamePlayers GamePlayer[]
 
   @@index([ownerId])
   @@index([isBuiltIn])
@@ -174,11 +203,19 @@ model Room {
   id           String         @id @default(uuid()) @db.VarChar(36)
   title        String         @db.VarChar(120)
   description  String         @default("") @db.VarChar(500)
+  type         RoomType       @default(discussion)
   mode         DiscussionMode @default(free)
   status       RoomStatus     @default(draft)
   visibility   RoomVisibility @default(public)
   language     String         @default("zh-CN") @db.VarChar(16)
   ownerId      String         @db.VarChar(36)
+
+  /// 娱乐房间专用字段
+  gameType     GameType?
+  gameStatus   GameStatus     @default(waiting)
+  minPlayers   Int?
+  maxPlayers   Int?
+  gameState    Json?
 
   /// 房间级消息序号发号器。用 UPDATE ... SET messageSeq = messageSeq + 1 原子自增，
   /// 避免 count(*) 竞态（并发插入会产生重复序号）
@@ -204,9 +241,12 @@ model Room {
   moderationEvents ModerationEvent[]
   policies         ModeratorPolicy[]
   penaltyStates    PenaltyState[]
+  gamePlayers      GamePlayer[]
 
   @@index([ownerId])
   @@index([status])
+  @@index([type])
+  @@index([gameStatus])
 }
 
 /// 角色在当前房间的实例（mvp-spec §4 RoomAgent）。
@@ -261,6 +301,26 @@ model Membership {
   @@unique([roomId, userId])
   @@index([roomId, status])
   @@index([userId])
+}
+
+/// 娱乐房间的玩家（人类或 AI）。
+model GamePlayer {
+  id        String     @id @default(uuid()) @db.VarChar(36)
+  roomId    String     @db.VarChar(36)
+  userId    String?    @db.VarChar(36)
+  profileId String?    @db.VarChar(36)
+  nickname  String     @db.VarChar(64)
+  role      PlayerRole
+  isAlive   Boolean    @default(true)
+  gameData  Json?
+  joinedAt  DateTime   @default(now()) @db.DateTime(3)
+
+  room    Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user    User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile AgentProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+
+  @@unique([roomId, userId])
+  @@index([roomId])
 }
 
 /// 不可变的版本化规则（flows §3 完成信号：生成不可变的 ModeratorPolicy 版本）

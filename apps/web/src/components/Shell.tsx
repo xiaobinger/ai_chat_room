@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, NavLink } from 'react-router-dom';
-import { Home, LogOut, Settings, Shield, SlidersHorizontal, Sparkles, Users } from 'lucide-react';
+import { Home, Gamepad2, LogOut, Settings, Shield, SlidersHorizontal, Sparkles, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 /** v6 的 NavLink 用 className 回调表达激活态，没有 activeClassName */
@@ -27,6 +27,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
         <nav>
           <NavItem to="/rooms" icon={<Home />} label="聊天室" />
+          <NavItem to="/entertainment" icon={<Gamepad2 />} label="娱乐空间" />
           <NavItem to="/roles" icon={<Users />} label="角色工坊" />
           <NavItem to="/settings" icon={<Settings />} label="设置" />
         </nav>
