@@ -20,9 +20,11 @@ describe('health', () => {
     expect(response.statusCode).toBe(200);
     // 测试里 setup-env 把 QUEUE_DRIVER 设成了 memory；真实部署这里必须是 bullmq。
     // 把驱动暴露在健康检查里，是因为"静默降级成内存队列"曾经骗过了所有人。
-    const body = response.json() as { ok: boolean; queue: string; envFile: string };
+    const body = response.json() as { ok: boolean; queue: string; envFile: string | null };
     expect(body).toMatchObject({ ok: true, queue: 'memory' });
-    expect(typeof body.envFile).toBe('string');
+    // envFile：有 .env 时是路径字符串，CI/PM2 等从环境变量注入时是 null。
+    // 二者都是合法状态，只要不是 undefined（字段缺失）就说明健康检查如实上报了配置来源。
+    expect(body.envFile === null || typeof body.envFile === 'string').toBe(true);
   });
 
   it('未知路由返回契约化的 404，而不是 Fastify 默认 HTML', async () => {
