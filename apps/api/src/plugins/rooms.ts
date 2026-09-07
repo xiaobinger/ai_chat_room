@@ -169,6 +169,14 @@ export const roomsPlugin: FastifyPluginAsync = async (fastify) => {
     return RoomSchema.parse(updated);
   });
 
+  /** 房主解散房间：级联删除所有成员、角色、消息、Run、策略等 */
+  fastify.delete('/:roomId', async (request, reply) => {
+    const { roomId } = request.params as { roomId: string };
+    await roomAccess(request, roomId, 'owner');
+    await prisma.room.delete({ where: { id: roomId } });
+    return reply.status(204).send();
+  });
+
   fastify.get('/:roomId/roles', async (request) => {
     const { roomId } = request.params as { roomId: string };
     await roomAccess(request, roomId, 'member');

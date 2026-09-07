@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Brain,
   CirclePause,
@@ -64,6 +64,7 @@ interface Policy {
 export default function ChatRoom() {
   const { id = '' } = useParams();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [room, setRoom] = useState<RoomDetail | null>(null);
   const [seed, setSeed] = useState<Message[]>([]);
   const [run, setRun] = useState<RunDetail | null>(null);
@@ -260,6 +261,16 @@ export default function ChatRoom() {
     try {
       await api('POST', `/rooms/${id}/moderation`, { action, targetRoleId, reason: action === 'mute' ? '房主手动禁言' : '房主手动移出' });
       await reload();
+    } catch (error) {
+      setProblem(describeError(error));
+    }
+  };
+
+  const dissolveRoom = async () => {
+    if (!window.confirm('确定要解散这个房间吗？所有消息、角色、成员将被永久删除，此操作不可恢复。')) return;
+    try {
+      await api('DELETE', `/rooms/${id}`, {});
+      navigate('/rooms');
     } catch (error) {
       setProblem(describeError(error));
     }
@@ -591,6 +602,12 @@ export default function ChatRoom() {
           </i>
         </div>
         <p className="hint">在线 {feed.online || room.online} 人 · 你：{user?.displayName ?? '未登录'}</p>
+
+        {room.isOwner && (
+          <button className="danger-btn" onClick={() => void dissolveRoom()}>
+            解散房间
+          </button>
+        )}
       </aside>
     </div>
   );
