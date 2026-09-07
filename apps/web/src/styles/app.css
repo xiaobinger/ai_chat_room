@@ -62,3 +62,10 @@ cite,.cite-list{display:block}
 
 .danger-btn{width:100%;border:1px solid #493035;background:transparent;color:#ff9b91;border-radius:10px;padding:10px;font-size:11px;font-weight:700;cursor:pointer;margin-top:18px;transition:all .2s}
 .danger-btn:hover{background:#271a1c;border-color:#61393f}
+
+.mention{display:inline-block;background:#2a2440;color:#ad9eff;border-radius:4px;padding:1px 5px;font-weight:700}
+.nickname-row{display:flex;gap:8px;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid #252630}
+.nickname-row input{flex:1;border:1px solid #30313b;background:#0d0e13;color:#fff;border-radius:8px;padding:8px 10px;font-size:11px}
+.nickname-row button{border:0;border-radius:8px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;background:#20212a;color:#d6d7df;white-space:nowrap}
+.nickname-row button:hover{background:#2a2b35}
+.nickname-display{font-size:10px;color:#777;margin-left:6px}

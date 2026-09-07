@@ -160,7 +160,7 @@ describe('鉴权与授权', () => {
   it('私有房间对非成员不可见，申请 + 房主批准后可见', async () => {
     const owner = await register('priv-owner');
     const stranger = await register('priv-stranger');
-    const roomId = await createRoom(owner);
+    const roomId = await createRoom(owner, { visibility: 'private' });
 
     expect((await call('GET', `/api/v1/rooms/${roomId}`, stranger)).statusCode).toBe(403);
 

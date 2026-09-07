@@ -3,6 +3,7 @@ import {
   InviteInputSchema,
   JoinRequestInputSchema,
   MembershipApproveInputSchema,
+  MembershipNicknameInputSchema,
   PublicUserSchema,
 } from '@tianma/contracts';
 import { prisma } from '@tianma/database';
@@ -147,6 +148,29 @@ export const membershipsPlugin: FastifyPluginAsync = async (fastify) => {
       where: { id: membership.id },
       data: { status: 'rejected', leftAt: new Date() },
     });
+  });
+
+  /** 设置/修改面具昵称：成员在房间内的显示名。 */
+  fastify.patch('/rooms/:roomId/membership/nickname', async (request, reply) => {
+    const { roomId } = request.params as { roomId: string };
+    const user = authedUser(request);
+    const parsed = MembershipNicknameInputSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'invalid_input', issues: parsed.error.issues });
+    }
+
+    const membership = await prisma.membership.findUnique({
+      where: { roomId_userId: { roomId, userId: user.id } },
+      select: { id: true },
+    });
+    if (!membership) return reply.status(404).send({ error: 'membership_not_found' });
+
+    const updated = await prisma.membership.update({
+      where: { id: membership.id },
+      data: { nickname: parsed.data.nickname || null },
+      select: { id: true, nickname: true },
+    });
+    return updated;
   });
 
   /** 自己退出。房主不能"退出"自己的房间，只能归档。 */

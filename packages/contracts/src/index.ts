@@ -516,6 +516,11 @@ export const MembershipApproveInputSchema = z.object({
 });
 export type MembershipApproveInput = z.infer<typeof MembershipApproveInputSchema>;
 
+export const MembershipNicknameInputSchema = z.object({
+  nickname: z.string().max(64).nullable().optional(),
+});
+export type MembershipNicknameInput = z.infer<typeof MembershipNicknameInputSchema>;
+
 export const PublishPolicyInputSchema = z.object({
   rules: z.array(ModeratorRuleSchema).min(1).max(20),
   ladder: PenaltyLadderSchema,

@@ -52,6 +52,8 @@ export class RunRunner {
   private pendingMentions: string[] = [];
   /** 当前房间的角色列表，用于 @点名。 */
   private currentRoles: RoomRoleRecord[] = [];
+  /** 上一轮发言后预算已耗尽，下一轮收场。 */
+  private budgetWasExhausted = false;
 
   constructor(deps: RunRunnerDeps) {
     this.repo = deps.repo;
@@ -158,6 +160,7 @@ export class RunRunner {
   ): Promise<void> {
     let current = run;
     let emptyRounds = 0;
+    this.budgetWasExhausted = false;
 
     for (;;) {
       // §1.4：PAUSE / TERMINATE 优先于下一轮调度，所以每轮开头重读，不信任内存里的状态
@@ -178,9 +181,10 @@ export class RunRunner {
         return;
       }
 
-      const verdict = budget.check(Date.now());
-      if (verdict.exhausted) {
-        await this.terminate(current, leaseToken, verdict.reason, '预算耗尽');
+      // 预算已在上一轮发言后耗尽：那轮是最后一场，现在收场。
+      // 不在发言前检查——允许最后一位 AI 把话说完，哪怕超预算。
+      if (this.budgetWasExhausted) {
+        await this.terminate(current, leaseToken, 'token_budget', '预算耗尽');
         return;
       }
 
@@ -452,6 +456,11 @@ export class RunRunner {
     if (message) await this.emit({ roomId: run.roomId, event: { type: 'message', payload: message } });
     // 钱已经花掉了：这笔消耗必须在后续转换之前入账，漏记会让 token_budget 永远打不满
     budget.onTokensSpent(attempt.tokens);
+
+    // 发言后检查预算：如果已耗尽，这是最后一场发言，下一轮收场
+    if (budget.check(Date.now()).exhausted) {
+      this.budgetWasExhausted = true;
+    }
 
     // 解析 AI 发言中的 @点名，下一轮导演优先选被点名的角色
     this.pendingMentions = this.parseMentions(attempt.text, this.currentRoles);

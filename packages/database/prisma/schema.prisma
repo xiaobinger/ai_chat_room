@@ -250,6 +250,8 @@ model Membership {
   leftAt          DateTime?        @db.DateTime(3)
   /// 房主禁言到指定轮次（NULL 表示未被禁言）。人类成员专用。
   mutedUntilRound Int?
+  /// 面具昵称：成员在该房间内的显示名，为空则用 User.displayName。
+  nickname String? @db.VarChar(64)
 
   room Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   user User     @relation(fields: [userId], references: [id], onDelete: Cascade)

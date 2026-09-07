@@ -39,7 +39,7 @@ interface RoomDetail {
   online: number;
   messageSeq: number;
   roomRoles: RoomRole[];
-  members: { id: string; status: string; intent: string; user: { id: string; displayName: string } }[];
+  members: { id: string; status: string; intent: string; nickname: string | null; user: { id: string; displayName: string } }[];
   runs: { id: string; status: string; topic: string; currentRound: number; createdAt: string }[];
 }
 
@@ -276,6 +276,19 @@ export default function ChatRoom() {
     }
   };
 
+  // 面具昵称
+  const myMembership = room?.members.find((m) => m.user.id === user?.id) ?? null;
+  const [nickname, setNickname] = useState(myMembership?.nickname || '');
+  const currentNickname = myMembership?.nickname || '';
+  const saveNickname = async () => {
+    try {
+      await api('PATCH', `/rooms/${id}/membership/nickname`, { nickname: nickname.trim() || null });
+      await reload();
+    } catch (error) {
+      setProblem(describeError(error));
+    }
+  };
+
   const [inviteEmail, setInviteEmail] = useState('');
   const invite = async () => {
     if (!inviteEmail) return;
@@ -386,7 +399,7 @@ export default function ChatRoom() {
           {messages.length === 0 && <Notice kind="info">还没有消息。启动讨论后角色会依次发言。</Notice>}
           {messages.map((message) => (
             <div key={message.id}>
-              <MessageRow message={message} roles={room.roomRoles} />
+              <MessageRow message={message} roles={room.roomRoles} members={room.members} />
               {/* 处置说明本身已作为 moderator 消息按 sequence 落在流里；
                   这里只补上可撤销的操作条，锚在它引用的那条消息之后 */}
               {eventsForMessage
@@ -532,6 +545,27 @@ export default function ChatRoom() {
           </div>
         )}
 
+        {room.isMember && (
+          <div className="member-section">
+            <div className="panelhead">
+              <span>我的面具</span>
+            </div>
+            <div className="nickname-row">
+              <input
+                type="text"
+                placeholder="设置昵称"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                maxLength={64}
+              />
+              <button onClick={() => void saveNickname()}>保存</button>
+            </div>
+            <p className="hint">
+              {currentNickname ? `当前昵称：${currentNickname}` : '未设置昵称，显示你的注册用户名'}
+            </p>
+          </div>
+        )}
+
         {room.isOwner && (
           <div className="member-section">
             <div className="panelhead">
@@ -613,18 +647,33 @@ export default function ChatRoom() {
   );
 }
 
-function MessageRow({ message, roles }: { message: Message; roles: RoomRole[] }) {
+function MessageRow({ message, roles, members }: { message: Message; roles: RoomRole[]; members: RoomDetail['members'] }) {
   const role = roles.find((entry) => entry.id === message.roleId);
+  const member = message.senderId ? members.find((m) => m.user.id === message.senderId) : null;
   const label = role?.name ?? (
     message.senderType === 'moderator'
       ? 'AI 管理员'
       : message.senderType === 'system'
         ? '系统'
         : message.senderType === 'user'
-          ? '人类成员'
+          ? member?.nickname || member?.user.displayName || '人类成员'
           : 'AI 角色'
   );
-  const background = role?.color ?? '#6f52d9';
+  const background = role?.color ?? (message.senderType === 'user' ? '#2871c9' : '#6f52d9');
+
+  // 高亮 @点名
+  const renderContent = (content: string) => {
+    const parts = content.split(/(@[^\s@,，。！？!?:：；;]+)/g);
+    return parts.map((part, i) =>
+      part.startsWith('@') ? (
+        <span key={i} className="mention">
+          {part}
+        </span>
+      ) : (
+        part
+      )
+    );
+  };
 
   return (
     <article className="message" id={`m-${message.id}`}>
@@ -636,7 +685,7 @@ function MessageRow({ message, roles }: { message: Message; roles: RoomRole[] })
           <b>{label}</b>
           <small>{relativeTime(message.createdAt)}</small>
         </header>
-        <p>{message.content}</p>
+        <p>{renderContent(message.content)}</p>
         {message.status === 'failed' && <div className="modnote">这条发言未完成</div>}
       </div>
     </article>
