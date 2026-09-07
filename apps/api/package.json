@@ -1,0 +1,36 @@
+{
+  "name": "@tianma/api",
+  "private": true,
+  "version": "0.0.0",
+  "main": "./src/main.ts",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.0.0",
+    "@fastify/websocket": "^11.0.1",
+    "@prisma/client": "^6.4.1",
+    "@tianma/ai-core": "workspace:*",
+    "@tianma/contracts": "workspace:*",
+    "@tianma/database": "workspace:*",
+    "@tianma/queue": "workspace:*",
+    "bcryptjs": "^2.4.3",
+    "fastify": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "ws": "^8.18.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^22.9.0",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.6"
+  }
+}

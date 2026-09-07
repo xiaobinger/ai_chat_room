@@ -1,0 +1,26 @@
+{
+  "name": "@tianma/ai-worker",
+  "private": true,
+  "version": "0.0.0",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tianma/ai-core": "workspace:*",
+    "@tianma/contracts": "workspace:*",
+    "@tianma/database": "workspace:*",
+    "@tianma/queue": "workspace:*",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.6"
+  }
+}

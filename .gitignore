@@ -1,0 +1,49 @@
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 构建产物
+dist/
+build/
+apps/web/dist/
+*.tsbuildinfo
+
+# 缓存
+.turbo/
+coverage/
+.eslintcache
+
+# 环境变量与密钥（.env.example 例外，需入库）
+.env
+.env.*
+!.env.example
+*.env
+!*/*.env.example
+
+# 数据库本地文件
+packages/database/prisma/dev.db
+packages/database/prisma/dev.db-journal
+*.sqlite
+*.sqlite3
+
+# 日志
+*.log
+npm-debug.log*
+pnpm-debug.log*
+logs/
+
+# 测试产物
+test-results/
+playwright-report/
+blob-report/
+
+# 编辑器与系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# 部署产物（release.sh 生成）
+releases/
+current

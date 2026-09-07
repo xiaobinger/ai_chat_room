@@ -1,0 +1,47 @@
+{
+  "name": "tianma-chat-room",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@tianma/ai-core": "workspace:*",
+    "@tianma/contracts": "workspace:*",
+    "@tianma/database": "workspace:*",
+    "@tianma/queue": "workspace:*",
+    "@types/node": "^22.9.0",
+    "@types/ws": "^8.5.13",
+    "eslint": "^9.39.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "prisma": "^6.4.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.2",
+    "typescript-eslint": "^8.46.0",
+    "ws": "^8.18.0"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r --no-bail typecheck && tsc -p tsconfig.json --noEmit",
+    "lint": "pnpm -r --no-bail lint",
+    "test": "pnpm -r --no-bail test",
+    "build": "pnpm --filter @tianma/web build",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test",
+    "verify:queue": "tsx scripts/verify-queue.ts",
+    "verify:run": "tsx scripts/verify-run.ts",
+    "verify:e2e": "tsx scripts/verify-e2e.ts",
+    "dev:api": "pnpm --filter @tianma/api dev",
+    "dev:worker": "pnpm --filter @tianma/ai-worker dev",
+    "dev:web": "pnpm --filter @tianma/web dev",
+    "db:generate": "prisma generate --schema packages/database/prisma/schema.prisma",
+    "db:migrate": "prisma migrate deploy --schema packages/database/prisma/schema.prisma",
+    "db:migrate:dev": "prisma migrate dev --schema packages/database/prisma/schema.prisma",
+    "db:status": "prisma migrate status --schema packages/database/prisma/schema.prisma",
+    "db:studio": "prisma studio --schema packages/database/prisma/schema.prisma",
+    "db:seed": "pnpm --filter @tianma/database seed",
+    "db:setup": "pnpm db:generate && pnpm db:migrate && pnpm db:seed",
+    "setup": "pnpm install && pnpm db:setup"
+  }
+}

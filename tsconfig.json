@@ -1,0 +1,14 @@
+{
+  "//": "只覆盖仓库根的 scripts/。各包与 app 有自己的 tsconfig，由 pnpm -r 逐个执行。",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["scripts"]
+}

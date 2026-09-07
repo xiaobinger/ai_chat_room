@@ -1,0 +1,458 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ===== 枚举 =====
+
+enum DiscussionMode {
+  structured
+  free
+}
+
+/// 房间生命周期。draft = 向导未走完（flows.md §1 完成信号）；archived = 归档（mvp-spec §3.1）
+enum RoomStatus {
+  draft
+  idle
+  running
+  paused
+  ended
+  archived
+}
+
+enum RoomVisibility {
+  private
+  public
+}
+
+/// state-machines.md §1.1
+enum RunStatus {
+  draft
+  queued
+  running
+  paused
+  completed
+  terminated
+  failed
+}
+
+/// state-machines.md §1.3 的 9 个终止原因
+enum RunTerminationReason {
+  round_limit
+  token_budget
+  cost_budget
+  time_limit
+  repetition_loop
+  safety_violation
+  no_available_agents
+  owner_terminated
+  user_cancelled
+}
+
+/// state-machines.md §3。只有 completed 进入其他角色的正式上下文
+enum MessageStatus {
+  pending
+  streaming
+  completed
+  failed
+  deleted
+}
+
+/// state-machines.md §2.1
+enum RoleRunState {
+  idle
+  thinking
+  speaking
+  muted
+  removed
+  error
+}
+
+enum RoleType {
+  host
+  debater
+  observer
+}
+
+enum MembershipStatus {
+  invited
+  approved
+  rejected
+  left
+}
+
+/// 申请意图（prototype 聊天室面板显示"参与讨论"/"潜水"）
+enum MembershipIntent {
+  discuss
+  observe
+}
+
+enum MessageSenderType {
+  user
+  agent
+  system
+  moderator
+}
+
+enum ModerationAction {
+  remind
+  warn
+  mute
+  kick
+  revoke
+}
+
+/// permissions.md §5 审计字段 actorType
+enum ModerationActorType {
+  owner
+  moderator
+  system
+}
+
+/// permissions.md §5 审计字段 targetType
+enum ModerationTargetType {
+  role
+  user
+}
+
+enum SummaryStatus {
+  pending
+  generating
+  ready
+  failed
+}
+
+// ===== 模型 =====
+
+model User {
+  id           String   @id @default(uuid()) @db.VarChar(36)
+  email        String   @unique @db.VarChar(191)
+  passwordHash String   @db.VarChar(100)
+  displayName  String   @db.VarChar(64)
+  avatarColor  String?  @db.VarChar(7)
+  createdAt    DateTime @default(now()) @db.DateTime(3)
+
+  ownedRooms       Room[]            @relation("RoomOwner")
+  memberships      Membership[]
+  createdRuns      DiscussionRun[]   @relation("RunCreator")
+  sentMessages     Message[]         @relation("MessageSender")
+  createdEvents    ModerationEvent[] @relation("EventCreator")
+  revertedEvents   ModerationEvent[] @relation("EventReverter")
+  targetedEvents   ModerationEvent[] @relation("EventTargetUser")
+  createdPolicies  ModeratorPolicy[] @relation("PolicyCreator")
+}
+
+/// 可复用角色模板（mvp-spec §4 AgentProfile；flows §2 完成信号）
+model AgentProfile {
+  id            String   @id @default(uuid()) @db.VarChar(36)
+  /// null = 系统内置角色，所有用户可见
+  ownerId       String?  @db.VarChar(36)
+  name          String   @db.VarChar(64)
+  tagline       String   @db.VarChar(120)
+  description   String   @db.Text
+  systemPrompt  String   @db.Text
+  avatarColor   String   @default("#7457ff") @db.VarChar(7)
+  /// 0..100，角色工坊展示用
+  rationality   Int      @default(50)
+  aggressiveness Int     @default(50)
+  isBuiltIn     Boolean  @default(false)
+  createdAt     DateTime @default(now()) @db.DateTime(3)
+  updatedAt     DateTime @updatedAt @db.DateTime(3)
+
+  roomRoles RoomRole[]
+
+  @@index([ownerId])
+  @@index([isBuiltIn])
+}
+
+model Room {
+  id           String         @id @default(uuid()) @db.VarChar(36)
+  title        String         @db.VarChar(120)
+  description  String         @default("") @db.VarChar(500)
+  mode         DiscussionMode @default(free)
+  status       RoomStatus     @default(draft)
+  visibility   RoomVisibility @default(private)
+  language     String         @default("zh-CN") @db.VarChar(16)
+  ownerId      String         @db.VarChar(36)
+
+  /// 房间级消息序号发号器。用 UPDATE ... SET messageSeq = messageSeq + 1 原子自增，
+  /// 避免 count(*) 竞态（并发插入会产生重复序号）
+  messageSeq   Int            @default(0)
+
+  /// permissions.md §2/§6：普通成员可选权限，房间级显式开关，默认全关
+  membersCanChat         Boolean @default(true)
+  membersCanModifyTopic  Boolean @default(false)
+  membersCanAddRoles     Boolean @default(false)
+  membersCanStartRun     Boolean @default(false)
+
+  /// mvp-spec §3.5：是否启用 AI 管理员
+  moderatorEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+
+  owner            User              @relation("RoomOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  roomRoles        RoomRole[]
+  memberships      Membership[]
+  runs             DiscussionRun[]
+  messages         Message[]
+  moderationEvents ModerationEvent[]
+  policies         ModeratorPolicy[]
+  penaltyStates    PenaltyState[]
+
+  @@index([ownerId])
+  @@index([status])
+}
+
+/// 角色在当前房间的实例（mvp-spec §4 RoomAgent）。
+/// 临时立场/积极度/优先级不覆盖 AgentProfile 模板（flows §2 完成信号）
+model RoomRole {
+  id           String   @id @default(uuid()) @db.VarChar(36)
+  roomId       String   @db.VarChar(36)
+  /// 来源模板；null 表示房间内直接创建的一次性角色
+  profileId    String?  @db.VarChar(36)
+  name         String   @db.VarChar(64)
+  type         RoleType
+  systemPrompt String   @db.Text
+  color        String?  @db.VarChar(7)
+  /// 对应 MODELS_CONFIG 里的 name；未命中回退 mock
+  modelName    String   @default("auto") @db.VarChar(64)
+  /// 加入房间时的临时配置
+  stance         String @default("") @db.VarChar(500)
+  aggressiveness Int    @default(50)
+  priority       Int    @default(50)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+
+  room             Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  profile          AgentProfile?     @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  memberships      Membership[]
+  agentStates      RunAgentState[]
+  messages         Message[]
+  moderationEvents ModerationEvent[] @relation("EventTargetRole")
+  penaltyStates    PenaltyState[]
+
+  @@index([roomId])
+  @@index([profileId])
+}
+
+model Membership {
+  id       String           @id @default(uuid()) @db.VarChar(36)
+  roomId   String           @db.VarChar(36)
+  userId   String           @db.VarChar(36)
+  roleId   String?          @db.VarChar(36)
+  status   MembershipStatus @default(invited)
+  intent   MembershipIntent @default(discuss)
+  joinedAt DateTime?        @db.DateTime(3)
+  leftAt   DateTime?        @db.DateTime(3)
+
+  room Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role RoomRole? @relation(fields: [roleId], references: [id], onDelete: SetNull)
+
+  @@unique([roomId, userId])
+  @@index([roomId, status])
+  @@index([userId])
+}
+
+/// 不可变的版本化规则（flows §3 完成信号：生成不可变的 ModeratorPolicy 版本）
+model ModeratorPolicy {
+  id          String   @id @default(uuid()) @db.VarChar(36)
+  roomId      String   @db.VarChar(36)
+  version     Int
+  /// 规则数组：[{ id, kind, enabled, threshold, action, safety }]
+  rules       Json
+  /// 处罚阶梯：["remind","warn","mute","kick"]
+  ladder      Json
+  publishedAt DateTime @default(now()) @db.DateTime(3)
+  createdBy   String   @db.VarChar(36)
+
+  room    Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  creator User @relation("PolicyCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  // ModerationEvent.policyVersion 是普通列而非外键：策略不可变且从不单独删除，
+  // 建外键只会在房间级联删除时引入检查顺序风险，对审计完整性没有增益。
+
+  @@unique([roomId, version])
+  @@index([roomId])
+}
+
+model DiscussionRun {
+  id       String    @id @default(uuid()) @db.VarChar(36)
+  roomId   String    @db.VarChar(36)
+  topic    String    @db.VarChar(500)
+  /// mvp-spec §3.3：主题讨论必须配置目标与完成条件
+  goal     String    @default("") @db.VarChar(500)
+  completionCriteria String @default("") @db.VarChar(500)
+  status   RunStatus @default(draft)
+
+  currentRound Int @default(0)
+  /// RunSettings 快照（ai-core defaultRunSettings）。写库前 API 校验 + 读取后 Worker 双校验
+  settings Json
+
+  terminationReason RunTerminationReason?
+
+  /// state-machines.md §1.4：每个 Run 同一时刻最多一个主动调度 Lease
+  leaseToken     String?   @db.VarChar(64)
+  leaseExpiresAt DateTime? @db.DateTime(3)
+  /// 乐观并发：所有状态写都带 where version = n，冲突则重读不覆盖
+  version        Int       @default(0)
+
+  startedAt DateTime? @db.DateTime(3)
+  endedAt   DateTime? @db.DateTime(3)
+  createdAt DateTime  @default(now()) @db.DateTime(3)
+  createdBy String    @db.VarChar(36)
+
+  room             Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  creator          User              @relation("RunCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  agentStates      RunAgentState[]
+  messages         Message[]
+  moderationEvents ModerationEvent[]
+  penaltyStates    PenaltyState[]
+  scheduleAudits   RunScheduleAudit[]
+  summary          DiscussionSummary?
+
+  @@index([roomId, status])
+  @@index([leaseExpiresAt])
+}
+
+/// 角色在某个 Run 内的运行态（state-machines.md §2）
+model RunAgentState {
+  runId String       @db.VarChar(36)
+  roleId String      @db.VarChar(36)
+  state RoleRunState @default(idle)
+  /// 禁言到期轮次（permissions §4：禁言必须包含到期轮次，永久禁言不进 MVP）
+  mutedUntilRound  Int @default(0)
+  consecutiveTurns Int @default(0)
+  errorCount       Int @default(0)
+  /// 最近一次调用失败发生在第几轮。error -> idle 的系统恢复要求已跨过一整轮，
+  /// 否则端点偶发空响应会让角色在同一轮里反复重试。
+  lastErrorRound   Int @default(-1)
+  /// 上次发言轮次，供导演计算沉默时长
+  lastSpokeRound   Int @default(-1)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+
+  run  DiscussionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  role RoomRole      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([runId, roleId])
+  @@index([runId, state])
+}
+
+/// 导演选人时的评分快照（mvp-spec §6：候选评分需记录可审计的因素）。
+/// 权重与因子全部落库，复盘页才能回答"为什么是他发言"；普通成员界面只看到结论。
+model RunScheduleAudit {
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  runId     String   @db.VarChar(36)
+  round     Int
+  /// SelectionAudit：{ weights, candidateCount, excluded[], ranking[], selectedRoleId, selectionReason }
+  payload   Json
+  createdAt DateTime @default(now()) @db.DateTime(3)
+
+  run DiscussionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, round])
+}
+
+model Message {
+  id         String            @id @default(uuid()) @db.VarChar(36)
+  roomId     String            @db.VarChar(36)
+  runId      String?           @db.VarChar(36)
+  /// 房间级单调序号，由 Room.messageSeq 原子发号。
+  /// 客户端断线重连用它作游标回补（验收 #6：无缺失、无重复、顺序一致）
+  sequence   Int
+  senderType MessageSenderType
+  senderId   String?           @db.VarChar(36)
+  roleId     String?           @db.VarChar(36)
+  content    String            @db.Text
+  status     MessageStatus     @default(completed)
+  /// 实际消耗 tokens，供预算审计；模型未返回 usage 时由 chars/4 估算
+  tokens     Int?
+  createdAt  DateTime          @default(now()) @db.DateTime(3)
+
+  room             Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  run              DiscussionRun?    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  sender           User?             @relation("MessageSender", fields: [senderId], references: [id], onDelete: SetNull)
+  role             RoomRole?         @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  evidenceForEvents ModerationEvent[] @relation("EventEvidence")
+
+  @@unique([roomId, sequence])
+  @@index([roomId, createdAt])
+  @@index([runId, sequence])
+}
+
+model ModerationEvent {
+  id      String            @id @default(uuid()) @db.VarChar(36)
+  roomId  String            @db.VarChar(36)
+  runId   String?           @db.VarChar(36)
+  /// permissions.md §5 审计字段
+  actorType  ModerationActorType @default(moderator)
+  actorId    String?             @db.VarChar(36)
+  targetType ModerationTargetType @default(role)
+  targetUserId String?           @db.VarChar(36)
+  targetRoleId String?           @db.VarChar(36)
+  action     ModerationAction
+  reason     String              @db.Text
+  matchedRule   String?          @db.VarChar(64)
+  policyVersion Int?
+  /// 证据消息 id 数组（mvp-spec §3.5：每个治理事件必须显示证据消息）
+  evidenceMessageIds Json
+  evidenceMessageId  String?     @db.VarChar(36)
+  /// 处罚时长（禁言轮次数）
+  durationRounds Int?
+  penaltyLevel   Int?
+  createdBy String   @db.VarChar(36)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  /// permissions §3：房主撤销不删除原治理事件
+  revertedAt DateTime? @db.DateTime(3)
+  revertedBy String?     @db.VarChar(36)
+
+  room            Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  run             DiscussionRun? @relation(fields: [runId], references: [id], onDelete: Cascade)
+  targetUser      User?          @relation("EventTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+  targetRole      RoomRole?      @relation("EventTargetRole", fields: [targetRoleId], references: [id], onDelete: SetNull)
+  evidenceMessage Message?       @relation("EventEvidence", fields: [evidenceMessageId], references: [id], onDelete: SetNull)
+  creator         User           @relation("EventCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  revoker         User?          @relation("EventReverter", fields: [revertedBy], references: [id], onDelete: SetNull)
+
+  @@index([roomId, createdAt])
+  @@index([runId])
+}
+
+/// 处罚阶梯游标（mvp-spec §3.5：提醒 → 警告 → 限时禁言 → 移出）。
+/// 房间级而非 Run 级：跨 Run 保留阶梯，避免"新 Run 里未警告即移出"违反 permissions §4
+model PenaltyState {
+  roomId        String   @db.VarChar(36)
+  targetRoleId  String   @db.VarChar(36)
+  /// 0=无 1=提醒 2=警告 3=限时禁言 4=移出
+  level         Int      @default(0)
+  lastRunId     String?  @db.VarChar(36)
+  lastEventId   String?  @db.VarChar(36)
+  updatedAt     DateTime @updatedAt @db.DateTime(3)
+
+  room       Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  targetRole RoomRole       @relation(fields: [targetRoleId], references: [id], onDelete: Cascade)
+  lastRun    DiscussionRun? @relation(fields: [lastRunId], references: [id], onDelete: SetNull)
+
+  @@id([roomId, targetRoleId])
+}
+
+/// 讨论复盘（mvp-spec §3.6：摘要必须可追溯到原始消息，不作为原消息替代品）
+model DiscussionSummary {
+  id      String        @id @default(uuid()) @db.VarChar(36)
+  runId   String        @unique @db.VarChar(36)
+  status  SummaryStatus @default(pending)
+  /// { keyPoints[], camps[], disputes[], consensus[], unresolved[], moderation[], followUps[] }
+  /// 每个条目自带 sourceMessageIds，使验收 #7 的"定位原消息"成为真实链接
+  payload Json
+  /// 全量引用的消息 id，便于校验可追溯性
+  sourceMessageIds Json
+  error   String?       @db.VarChar(500)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+
+  run DiscussionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+}
