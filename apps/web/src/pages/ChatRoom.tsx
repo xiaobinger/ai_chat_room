@@ -735,18 +735,29 @@ function MessageRow({ message, roles, members }: { message: Message; roles: Room
   );
   const background = role?.color ?? (message.senderType === 'user' ? '#2871c9' : '#6f52d9');
 
-  // 高亮 @点名
+  // 构建有效点名名称集合：AI 角色名 + 人类成员昵称/用户名
+  const validMentions = new Map<string, string>();
+  for (const r of roles) validMentions.set(r.name.toLowerCase(), r.name);
+  for (const m of members) {
+    const display = m.nickname || m.user.displayName;
+    validMentions.set(display.toLowerCase(), display);
+    if (m.nickname) validMentions.set(m.user.displayName.toLowerCase(), display);
+  }
+
+  // 高亮 @点名：只高亮真正匹配参与者的点名
   const renderContent = (content: string) => {
     const parts = content.split(/(@[^\s@,，。！？!?:：；;]+)/g);
-    return parts.map((part, i) =>
-      part.startsWith('@') ? (
-        <span key={i} className="mention">
-          {part}
+    return parts.map((part, i) => {
+      if (!part.startsWith('@')) return part;
+      const name = part.slice(1);
+      const matched = validMentions.get(name.toLowerCase());
+      if (!matched) return part;
+      return (
+        <span key={i} className="mention" title={`@${matched}`}>
+          @{matched}
         </span>
-      ) : (
-        part
-      )
-    );
+      );
+    });
   };
 
   return (
