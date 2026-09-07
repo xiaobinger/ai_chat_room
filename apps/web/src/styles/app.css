@@ -78,3 +78,6 @@ cite,.cite-list{display:block}
 .mention-name{font-size:12px;font-weight:600}
 .mention-real{font-size:10px;color:#777;margin-left:auto}
 .mention-item.role .mention-name{color:#ad9eff}
+
+.unmute-btn{border:0;border-radius:6px;padding:5px 8px;font-size:10px;cursor:pointer;font-weight:700;background:#1f2a24;color:#5ee9a3}
+.unmute-btn:hover{background:#2a3a2e}

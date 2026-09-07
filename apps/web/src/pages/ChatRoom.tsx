@@ -40,7 +40,7 @@ interface RoomDetail {
   online: number;
   messageSeq: number;
   roomRoles: RoomRole[];
-  members: { id: string; status: string; intent: string; nickname: string | null; user: { id: string; displayName: string } }[];
+  members: { id: string; status: string; intent: string; nickname: string | null; mutedUntilRound: number | null; user: { id: string; displayName: string } }[];
   runs: { id: string; status: string; topic: string; currentRound: number; createdAt: string }[];
 }
 
@@ -296,18 +296,20 @@ export default function ChatRoom() {
     }
   };
 
-  const moderateUser = async (targetUserId: string, action: 'mute' | 'kick') => {
+  const moderateUser = async (targetUserId: string, action: 'mute' | 'kick' | 'unmute') => {
+    const reason = action === 'mute' ? '房主手动禁言' : action === 'kick' ? '房主手动移出' : '房主解除禁言';
     try {
-      await api('POST', `/rooms/${id}/moderation`, { action, targetUserId, reason: action === 'mute' ? '房主手动禁言' : '房主手动移出' });
+      await api('POST', `/rooms/${id}/moderation`, { action, targetUserId, reason });
       await reload();
     } catch (error) {
       setProblem(describeError(error));
     }
   };
 
-  const moderateRole = async (targetRoleId: string, action: 'mute' | 'kick') => {
+  const moderateRole = async (targetRoleId: string, action: 'mute' | 'kick' | 'unmute') => {
+    const reason = action === 'mute' ? '房主手动禁言' : action === 'kick' ? '房主手动移出' : '房主解除禁言';
     try {
-      await api('POST', `/rooms/${id}/moderation`, { action, targetRoleId, reason: action === 'mute' ? '房主手动禁言' : '房主手动移出' });
+      await api('POST', `/rooms/${id}/moderation`, { action, targetRoleId, reason });
       await reload();
     } catch (error) {
       setProblem(describeError(error));
@@ -556,9 +558,15 @@ export default function ChatRoom() {
               </div>
               {room.isOwner && state !== 'removed' && (
                 <div className="member-actions">
-                  <button className="mute" onClick={() => void moderateRole(role.id, 'mute')}>
-                    禁言
-                  </button>
+                  {state === 'muted' ? (
+                    <button className="unmute-btn" onClick={() => void moderateRole(role.id, 'unmute')}>
+                      解除禁言
+                    </button>
+                  ) : (
+                    <button className="mute" onClick={() => void moderateRole(role.id, 'mute')}>
+                      禁言
+                    </button>
+                  )}
                   <button className="reject" onClick={() => void moderateRole(role.id, 'kick')}>
                     移出
                   </button>
@@ -674,9 +682,15 @@ export default function ChatRoom() {
               </div>
               {room.isOwner && member.user.id !== room.ownerId && (
                 <div className="member-actions">
-                  <button className="mute" onClick={() => void moderateUser(member.user.id, 'mute')}>
-                    禁言
-                  </button>
+                  {member.mutedUntilRound != null ? (
+                    <button className="unmute-btn" onClick={() => void moderateUser(member.user.id, 'unmute')}>
+                      解除禁言
+                    </button>
+                  ) : (
+                    <button className="mute" onClick={() => void moderateUser(member.user.id, 'mute')}>
+                      禁言
+                    </button>
+                  )}
                   <button className="reject" onClick={() => void moderateUser(member.user.id, 'kick')}>
                     移出
                   </button>

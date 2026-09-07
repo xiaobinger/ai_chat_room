@@ -16,6 +16,7 @@ const ACTION_LABELS: Record<ModerationAction, string> = {
   mute: '限时禁言',
   kick: '移出',
   revoke: '撤销',
+  unmute: '解除禁言',
 };
 
 /** 处罚阶梯游标：0 无 → 1 提醒 → 2 警告 → 3 限时禁言 → 4 移出 */
@@ -25,6 +26,7 @@ const ACTION_LEVEL: Record<ModerationAction, number> = {
   mute: 3,
   kick: 4,
   revoke: 0,
+  unmute: 0,
 };
 
 /** 这个房间当前仍在推进的 Run（暂停也算，恢复后继续）。 */
@@ -237,6 +239,23 @@ export const moderationPlugin: FastifyPluginAsync = async (fastify) => {
       });
       if (prior === 0) {
         return reply.status(409).send({ error: 'kick_requires_prior_warning' });
+      }
+    }
+
+    // 解除禁言：直接清除禁言状态，无需前置条件
+    if (action === 'unmute') {
+      const runId = await activeRunId(roomId);
+      if (targetRoleId && runId) {
+        await prisma.runAgentState.updateMany({
+          where: { runId, roleId: targetRoleId },
+          data: { state: 'idle', mutedUntilRound: 0 },
+        });
+      }
+      if (targetUserId) {
+        await prisma.membership.updateMany({
+          where: { roomId, userId: targetUserId },
+          data: { mutedUntilRound: null },
+        });
       }
     }
 

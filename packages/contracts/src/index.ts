@@ -85,7 +85,7 @@ export type MembershipStatus = z.infer<typeof MembershipStatusSchema>;
 export const MembershipIntentSchema = z.enum(['discuss', 'observe']);
 export type MembershipIntent = z.infer<typeof MembershipIntentSchema>;
 
-export const ModerationActionSchema = z.enum(['remind', 'warn', 'mute', 'kick', 'revoke']);
+export const ModerationActionSchema = z.enum(['remind', 'warn', 'mute', 'kick', 'revoke', 'unmute']);
 export type ModerationAction = z.infer<typeof ModerationActionSchema>;
 
 /** permissions.md §5 审计字段 */

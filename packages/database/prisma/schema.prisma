@@ -104,6 +104,7 @@ enum ModerationAction {
   mute
   kick
   revoke
+  unmute
 }
 
 /// permissions.md §5 审计字段 actorType
