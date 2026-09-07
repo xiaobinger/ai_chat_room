@@ -69,3 +69,12 @@ cite,.cite-list{display:block}
 .nickname-row button{border:0;border-radius:8px;padding:8px 12px;font-size:11px;font-weight:700;cursor:pointer;background:#20212a;color:#d6d7df;white-space:nowrap}
 .nickname-row button:hover{background:#2a2b35}
 .nickname-display{font-size:10px;color:#777;margin-left:6px}
+
+.input-wrap{position:relative;flex:1}
+.mention-picker{position:absolute;bottom:100%;left:0;right:0;margin-bottom:8px;background:#13141a;border:1px solid #30313b;border-radius:10px;max-height:200px;overflow:auto;z-index:50;box-shadow:0 8px 30px #0008}
+.mention-item{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;color:#ececf2;padding:10px 12px;cursor:pointer;text-align:left}
+.mention-item:hover,.mention-item.selected{background:#1d1930}
+.mention-avatar{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;font-weight:800;color:#fff;font-size:11px;flex:0 0 auto}
+.mention-name{font-size:12px;font-weight:600}
+.mention-real{font-size:10px;color:#777;margin-left:auto}
+.mention-item.role .mention-name{color:#ad9eff}

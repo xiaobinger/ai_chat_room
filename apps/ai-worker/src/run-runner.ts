@@ -50,6 +50,8 @@ export class RunRunner {
   private readonly moderator: ModeratorRuntime;
   /** 最近一条 AI 发言中 @点名的角色 id，下一轮导演优先选它们。 */
   private pendingMentions: string[] = [];
+  /** 人类成员 @点名的 AI 角色 id，下一轮导演优先选中回应。 */
+  private humanMentions: string[] = [];
   /** 当前房间的角色列表，用于 @点名。 */
   private currentRoles: RoomRoleRecord[] = [];
   /** 上一轮发言后预算已耗尽，下一轮收场。 */
@@ -205,6 +207,9 @@ export class RunRunner {
 
       // 人类发言后，导演应优先选 AI 来回应。检测最近 3 条是否有人类发言。
       const humanSpokeRecently = await this.repo.hasRecentHumanMessage(current.id, 3);
+      if (humanSpokeRecently) {
+        this.humanMentions = await this.resolveHumanMentions(current.id, roles);
+      }
       const selection = selectNextSpeaker(
         this.candidates(
           current,
@@ -325,6 +330,13 @@ export class RunRunner {
     return mentionedIds;
   }
 
+  /** 解析最近一条人类消息中的 @点名，返回被 @的 AI 角色 id。 */
+  private async resolveHumanMentions(runId: string, roles: RoomRoleRecord[]): Promise<string[]> {
+    const recent = await this.repo.getRecentHumanContent(runId, 1);
+    if (!recent.length) return [];
+    return this.parseMentions(recent[0].content, roles);
+  }
+
   private candidates(
     run: ClaimedRun,
     roles: RoomRoleRecord[],
@@ -334,7 +346,7 @@ export class RunRunner {
     humanSpokeRecently = false,
   ): CandidateFeatures[] {
     const byRole = new Map(states.map((state) => [state.roleId, state]));
-    const mentionedSet = new Set(this.pendingMentions);
+    const mentionedSet = new Set([...this.pendingMentions, ...this.humanMentions]);
     return roles.map((role) => {
       const state = byRole.get(role.id);
       const lastSpoke = state?.lastSpokeRound ?? -1;

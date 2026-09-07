@@ -102,6 +102,7 @@ export interface RunStore {
   ): Promise<void>;
   getContext(runId: string, limit: number): Promise<ContextRecord[]>;
   hasRecentHumanMessage(runId: string, lookback: number): Promise<boolean>;
+  getRecentHumanContent(runId: string, limit: number): Promise<{ content: string; sequence: number }[]>;
   saveScheduleAudit(runId: string, round: number, payload: unknown): Promise<void>;
   messageForEvent(id: string): Promise<StoredMessage | null>;
   getActivePolicy(roomId: string): Promise<ActivePolicy | null>;
@@ -366,6 +367,17 @@ export class RunRepository implements RunStore {
       select: { id: true },
     });
     return messages.length > 0;
+  }
+
+  /** 最近若干条人类发言内容，供解析 @点名。 */
+  async getRecentHumanContent(runId: string, limit: number): Promise<{ content: string; sequence: number }[]> {
+    const messages = await prisma.message.findMany({
+      where: { runId, status: 'completed', senderType: 'user' },
+      orderBy: { sequence: 'desc' },
+      take: limit,
+      select: { content: true, sequence: true },
+    });
+    return messages.reverse();
   }
 
   /** 最近若干条已完成发言，供重复检测取滑动窗口。 */

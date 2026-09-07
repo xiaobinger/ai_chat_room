@@ -242,6 +242,13 @@ export class FakeStore implements RunStore {
       .length > 0;
   }
 
+  async getRecentHumanContent(runId: string, limit: number): Promise<{ content: string; sequence: number }[]> {
+    return this.messages
+      .filter((message) => message.runId === runId && message.senderType === 'user' && message.status === 'completed')
+      .slice(-limit)
+      .map((message) => ({ content: message.content, sequence: message.sequence }));
+  }
+
   async getContext(runId: string, limit: number): Promise<ContextRecord[]> {
     const roleName = (roleId: string | null): string =>
       this.roles.find((role) => role.id === roleId)?.name ?? '系统';

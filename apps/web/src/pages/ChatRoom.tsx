@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { MentionPicker, type MentionTarget } from '../components/MentionPicker';
 import {
   Brain,
   CirclePause,
@@ -74,6 +75,10 @@ export default function ChatRoom() {
   const [drawer, setDrawer] = useState(false);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState('');
+  const [mentionCaret, setMentionCaret] = useState(-1);
+  const inputRef = useRef<HTMLInputElement>(null);
   const scroller = useRef<HTMLDivElement | null>(null);
 
   const reload = useCallback(async () => {
@@ -213,9 +218,52 @@ export default function ChatRoom() {
     }
   };
 
+  const mentionTargets: MentionTarget[] = useMemo(() => {
+    if (!room) return [];
+    const roles = room.roomRoles.map((r) => ({ id: r.id, name: r.name, kind: 'role' as const, color: r.color ?? undefined }));
+    const members = room.members
+      .filter((m) => m.status === 'approved')
+      .map((m) => ({
+        id: m.user.id,
+        name: m.nickname || m.user.displayName,
+        kind: 'member' as const,
+        displayName: m.user.displayName,
+      }));
+    return [...roles, ...members];
+  }, [room]);
+
+  const handleMentionSelect = (target: MentionTarget) => {
+    const before = draft.slice(0, mentionCaret);
+    const after = draft.slice(mentionCaret + mentionFilter.length + 1);
+    const inserted = `${target.name} `;
+    setDraft(before + inserted + after);
+    setMentionOpen(false);
+    setMentionFilter('');
+    inputRef.current?.focus();
+  };
+
+  const handleDraftChange = (value: string) => {
+    setDraft(value);
+    const caret = inputRef.current?.selectionStart ?? value.length;
+    const beforeCaret = value.slice(0, caret);
+    const atMatch = beforeCaret.match(/@([^\s@,，。！？!?:：；;]*)$/);
+    if (atMatch) {
+      setMentionOpen(true);
+      setMentionFilter(atMatch[1]);
+      setMentionCaret(caret - atMatch[0].length);
+    } else {
+      setMentionOpen(false);
+    }
+  };
+
+  const filteredTargets = mentionOpen
+    ? mentionTargets.filter((t) => t.name.toLowerCase().includes(mentionFilter.toLowerCase()))
+    : [];
+
   const send = async () => {
     const content = draft.trim();
     if (!content || !room) return;
+    setMentionOpen(false);
     setSending(true);
     try {
       await api('POST', `/rooms/${id}/messages`, { content, runId: run?.id ?? null });
@@ -458,17 +506,29 @@ export default function ChatRoom() {
               启动讨论
             </button>
           )}
-          <input
-            value={draft}
-            placeholder="插话、追问，或给讨论一个新方向…"
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                void send();
-              }
-            }}
-          />
+          <div className="input-wrap">
+            <input
+              ref={inputRef}
+              value={draft}
+              placeholder="插话、追问，或 @某人 来点名…"
+              onChange={(event) => handleDraftChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey && !mentionOpen) {
+                  event.preventDefault();
+                  void send();
+                }
+              }}
+              onBlur={() => setTimeout(() => setMentionOpen(false), 150)}
+            />
+            {mentionOpen && (
+              <MentionPicker
+                targets={filteredTargets}
+                anchorRef={inputRef}
+                onSelect={handleMentionSelect}
+                onClose={() => setMentionOpen(false)}
+              />
+            )}
+          </div>
           <button className="send" onClick={() => void send()} disabled={sending || !room.membersCanChat && !room.isOwner}>
             发送
           </button>
