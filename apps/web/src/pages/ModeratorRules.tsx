@@ -22,11 +22,11 @@ const LADDER_ALL = ['remind', 'warn', 'mute', 'kick'] as const;
 export default function ModeratorRules() {
   const { id = '' } = useParams();
   const [policy, setPolicy] = useState<Policy | null>(null);
-  const [history, setHistory] = useState<Array<{ version: number; publishedAt: string; ruleCount: number }>>([]);
+  const [history, setHistory] = useState<{ version: number; publishedAt: string; ruleCount: number }[]>([]);
   const [rules, setRules] = useState<ModeratorRule[]>([]);
   const [ladder, setLadder] = useState<string[]>([...LADDER_ALL]);
   const [problem, setProblem] = useState<string | null>(null);
-  const [issues, setIssues] = useState<Array<{ path: string; message: string }>>([]);
+  const [issues, setIssues] = useState<{ path: string; message: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [owner, setOwner] = useState(false);
 
@@ -51,7 +51,6 @@ export default function ModeratorRules() {
 
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const patch = (index: number, changes: Partial<ModeratorRule>) =>

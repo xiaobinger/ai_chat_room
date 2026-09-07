@@ -7,7 +7,7 @@ import type {
 } from './types';
 
 /** state-machines.md §2.2，14 条合法转移，逐行照抄。 */
-const EDGES: ReadonlyArray<readonly [RoleRunState, RoleEvent, RoleRunState]> = [
+const EDGES: readonly (readonly [RoleRunState, RoleEvent, RoleRunState])[] = [
   ['idle', 'SELECT', 'thinking'],
   ['thinking', 'FIRST_TOKEN', 'speaking'],
   ['thinking', 'CALL_FAILED', 'error'],

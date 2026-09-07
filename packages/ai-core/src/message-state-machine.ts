@@ -6,7 +6,7 @@ import type {
 } from './types';
 
 /** state-machines.md §3，5 条合法转移。 */
-const EDGES: ReadonlyArray<readonly [MessageStatus, MessageEvent, MessageStatus]> =
+const EDGES: readonly (readonly [MessageStatus, MessageEvent, MessageStatus])[] =
   [
     ['pending', 'START_STREAM', 'streaming'],
     ['pending', 'FAIL', 'failed'],

@@ -41,8 +41,8 @@ export interface SelectionAudit {
   at: number;
   weights: typeof DIRECTOR_WEIGHTS;
   candidateCount: number;
-  excluded: Array<{ roleId: string; reason: string }>;
-  ranking: Array<{ roleId: string; total: number; factors: Record<DirectorFactor, number> }>;
+  excluded: { roleId: string; reason: string }[];
+  ranking: { roleId: string; total: number; factors: Record<DirectorFactor, number> }[];
   selectedRoleId: string | null;
   selectionReason: string | null;
 }

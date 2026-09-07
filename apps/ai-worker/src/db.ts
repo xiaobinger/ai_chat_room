@@ -107,7 +107,7 @@ export interface RunStore {
   getRecentAgentContents(
     runId: string,
     limit: number,
-  ): Promise<Array<{ messageId: string; sequence: number; roleId: string | null; content: string }>>;
+  ): Promise<{ messageId: string; sequence: number; roleId: string | null; content: string }[]>;
   getPenaltyLevel(roomId: string, targetRoleId: string): Promise<number>;
   hasPriorWarnOrMute(roomId: string, targetRoleId: string): Promise<boolean>;
   recordModeration(input: RecordModerationInput): Promise<ModerationRecord>;
@@ -360,7 +360,7 @@ export class RunRepository implements RunStore {
   async getRecentAgentContents(
     runId: string,
     limit: number,
-  ): Promise<Array<{ messageId: string; sequence: number; roleId: string | null; content: string }>> {
+  ): Promise<{ messageId: string; sequence: number; roleId: string | null; content: string }[]> {
     const messages = await prisma.message.findMany({
       where: { runId, status: 'completed', senderType: 'agent' },
       orderBy: { sequence: 'desc' },

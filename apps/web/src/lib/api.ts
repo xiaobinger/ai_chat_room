@@ -32,9 +32,9 @@ export class ApiError extends Error {
   }
 
   /** 后端把 zod 失败细节放在 issues 里，按 path 映射到表单字段。 */
-  get issueList(): Array<{ path: string; message: string }> {
+  get issueList(): { path: string; message: string }[] {
     if (!Array.isArray(this.issues)) return [];
-    return (this.issues as Array<Record<string, unknown>>).map((issue) => ({
+    return (this.issues as Record<string, unknown>[]).map((issue) => ({
       path: String(issue.path ?? '(root)'),
       message: String(issue.message ?? ''),
     }));

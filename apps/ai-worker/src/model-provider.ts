@@ -226,7 +226,7 @@ async function requestJson(
 ): Promise<unknown | null> {
   try {
     const data = await postJson(url, headers, body, timeoutMs);
-    const choices = data.choices as Array<{ message?: { content?: unknown } }> | undefined;
+    const choices = data.choices as { message?: { content?: unknown } }[] | undefined;
     const text = choices?.[0]?.message?.content;
     return typeof text === 'string' ? extractJsonObject(text) : null;
   } catch {
@@ -265,7 +265,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       request.timeoutMs,
     );
 
-    const choices = data.choices as Array<{ message?: { content?: unknown } }> | undefined;
+    const choices = data.choices as { message?: { content?: unknown } }[] | undefined;
     const text = choices?.[0]?.message?.content;
     if (typeof text !== 'string' || text.trim() === '') {
       throw new ModelCallError('empty', `模型未产出内容：${JSON.stringify(data).slice(0, 200)}`);
@@ -296,7 +296,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
         },
         request.timeoutMs,
       );
-      const choices = data.choices as Array<{ message?: { content?: unknown } }> | undefined;
+      const choices = data.choices as { message?: { content?: unknown } }[] | undefined;
       const text = choices?.[0]?.message?.content;
       return typeof text === 'string' ? parseRelevanceScore(text) : null;
     } catch {
@@ -348,7 +348,7 @@ export class AnthropicProvider implements ModelProvider {
       request.timeoutMs,
     );
 
-    const blocks = data.content as Array<{ text?: unknown }> | undefined;
+    const blocks = data.content as { text?: unknown }[] | undefined;
     const text = blocks?.find((block) => typeof block.text === 'string')?.text;
     if (typeof text !== 'string' || text.trim() === '') {
       throw new ModelCallError('empty', `模型未产出内容：${JSON.stringify(data).slice(0, 200)}`);
@@ -376,7 +376,7 @@ export class AnthropicProvider implements ModelProvider {
         },
         request.timeoutMs,
       );
-      const blocks = data.content as Array<{ text?: unknown }> | undefined;
+      const blocks = data.content as { text?: unknown }[] | undefined;
       const text = blocks?.find((block) => typeof block.text === 'string')?.text;
       return typeof text === 'string' ? parseRelevanceScore(text) : null;
     } catch {
@@ -398,7 +398,7 @@ export class AnthropicProvider implements ModelProvider {
         },
         request.timeoutMs,
       );
-      const blocks = data.content as Array<{ text?: unknown }> | undefined;
+      const blocks = data.content as { text?: unknown }[] | undefined;
       const text = blocks?.find((block) => typeof block.text === 'string')?.text;
       if (typeof text !== 'string') return null;
       const parsed = SummaryDraftSchema.safeParse(extractJsonObject(text));

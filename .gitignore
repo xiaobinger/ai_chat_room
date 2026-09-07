@@ -12,6 +12,7 @@ apps/web/dist/
 .turbo/
 coverage/
 .eslintcache
+.vite/
 
 # 环境变量与密钥（.env.example 例外，需入库）
 .env

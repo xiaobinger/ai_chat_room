@@ -17,7 +17,7 @@ interface RoomListItem {
   messageSeq: number;
   createdAt: string;
   owner: PublicUser;
-  roomRoles: Array<{ id: string; name: string; type: string; color: string | null }>;
+  roomRoles: { id: string; name: string; type: string; color: string | null }[];
   _count: { messages: number; runs: number; memberships: number };
 }
 

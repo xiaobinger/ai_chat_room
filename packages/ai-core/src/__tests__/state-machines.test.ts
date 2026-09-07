@@ -15,7 +15,7 @@ import {
 } from '../message-state-machine';
 
 describe('run state machine (state-machines.md §1.2)', () => {
-  const legal: Array<[Parameters<typeof runTransition>[0], Parameters<typeof runTransition>[1], string]> = [
+  const legal: [Parameters<typeof runTransition>[0], Parameters<typeof runTransition>[1], string][] = [
     ['draft', 'START', 'queued'],
     ['queued', 'WORKER_CLAIMED', 'running'],
     ['queued', 'CANCEL', 'terminated'],

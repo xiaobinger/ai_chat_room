@@ -29,7 +29,7 @@ interface SummaryResponse {
   payload: SummaryPayload | null;
 }
 
-const SECTIONS: Array<{ key: keyof SummaryPayload; title: string; kind: 'list' | 'danger' | 'plain' }> = [
+const SECTIONS: { key: keyof SummaryPayload; title: string; kind: 'list' | 'danger' | 'plain' }[] = [
   { key: 'consensus', title: '形成的共识', kind: 'list' },
   { key: 'disputes', title: '主要争论', kind: 'plain' },
   { key: 'unresolved', title: '仍未解决的分歧', kind: 'danger' },

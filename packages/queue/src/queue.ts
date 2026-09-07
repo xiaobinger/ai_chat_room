@@ -24,7 +24,7 @@ export interface Queue<T> {
 export class MemoryQueue<T = unknown> implements Queue<T> {
   readonly driver = 'memory' as const;
 
-  private readonly jobs: Array<{ id: string; name: string; data: T; delayUntil?: number }> = [];
+  private readonly jobs: { id: string; name: string; data: T; delayUntil?: number }[] = [];
   private handler: ((data: T, jobName: string) => Promise<void>) | null = null;
   private timer: NodeJS.Timeout | null = null;
   private closed = false;

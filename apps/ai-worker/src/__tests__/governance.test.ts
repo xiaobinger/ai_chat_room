@@ -80,7 +80,7 @@ function harness(provider: ModelProvider, overrides = settings()): Harness {
 
 function seed(
   store: FakeStore,
-  roles: Array<{ id: string; name: string }>,
+  roles: { id: string; name: string }[],
   runOverrides: Partial<{ moderatorEnabled: boolean }> = {},
 ): void {
   store.seedRun({

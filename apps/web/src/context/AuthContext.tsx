@@ -3,7 +3,7 @@ import type { PublicUser } from '@tianma/contracts';
 import { api, clearToken, getToken, onUnauthorized, setToken } from '../lib/api';
 
 type Session = PublicUser & { email: string };
-type AuthResponse = { token: string; user: PublicUser };
+interface AuthResponse { token: string; user: PublicUser }
 
 interface AuthValue {
   user: Session | null;

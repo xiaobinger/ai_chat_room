@@ -7,7 +7,7 @@ import type {
 } from './types';
 
 /** state-machines.md §1.2，13 条合法转移，逐行照抄。 */
-const EDGES: ReadonlyArray<readonly [RunStatus, RunEvent, RunStatus]> = [
+const EDGES: readonly (readonly [RunStatus, RunEvent, RunStatus])[] = [
   ['draft', 'START', 'queued'],
   ['queued', 'WORKER_CLAIMED', 'running'],
   ['queued', 'CANCEL', 'terminated'],

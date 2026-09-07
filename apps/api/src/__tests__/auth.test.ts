@@ -242,7 +242,7 @@ describe('鉴权与授权', () => {
 
     const backfill = await call('GET', `/api/v1/rooms/${roomId}/messages?after=${rows[2]!.sequence}`, owner);
     expect(backfill.statusCode).toBe(200);
-    const fetched = backfill.json() as Array<{ sequence: number }>;
+    const fetched = backfill.json() as { sequence: number }[];
     expect(fetched[0]!.sequence).toBe(rows[2]!.sequence + 1);
     expect(fetched).toHaveLength(5);
   });
@@ -470,7 +470,7 @@ describe('策略版本化', () => {
     expect((current.json() as { version: number }).version).toBe(2);
 
     const history = await call('GET', `/api/v1/rooms/${roomId}/policies`, owner);
-    const versions = (history.json() as Array<{ version: number }>).map((entry) => entry.version);
+    const versions = (history.json() as { version: number }[]).map((entry) => entry.version);
     expect(versions).toEqual([2, 1]);
   });
 
@@ -483,7 +483,7 @@ describe('策略版本化', () => {
       ladder: ['kick', 'warn'],
     });
     expect(response.statusCode).toBe(400);
-    const body = response.json() as { error: string; issues: Array<{ path: string }> };
+    const body = response.json() as { error: string; issues: { path: string }[] };
     expect(body.error).toBe('policy_invalid');
     expect(body.issues.map((issue) => issue.path)).toEqual(['rules[0].threshold', 'ladder[1]']);
     // 拒绝发布不能留下半个版本
@@ -549,7 +549,7 @@ describe('讨论复盘端点', () => {
 
     const response = await call('GET', `/api/v1/rooms/${roomId}/runs/${started.id}/summary`, owner);
     expect(response.statusCode).toBe(200);
-    const body = response.json() as { status: string; payload: { keyPoints: Array<{ text: string; sourceMessageIds: string[] }> } };
+    const body = response.json() as { status: string; payload: { keyPoints: { text: string; sourceMessageIds: string[] }[] } };
     expect(body.status).toBe('ready');
     expect(body.payload.keyPoints[0]!.sourceMessageIds).toEqual([message.id]);
     // 引用必须指向真实存在的消息，否则界面点不出原文

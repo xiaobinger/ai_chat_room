@@ -119,7 +119,7 @@ async function seedOwner() {
   });
 }
 
-async function seedRoom(ownerId: string, profiles: Array<{ id: string; name: string }>) {
+async function seedRoom(ownerId: string, profiles: { id: string; name: string }[]) {
   const profileId = new Map(profiles.map((p) => [p.name, p.id]));
   const existing = await prisma.room.findFirst({ where: { title: '远程办公是不是伪命题', ownerId } });
 

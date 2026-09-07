@@ -30,7 +30,7 @@ export class FakeStore implements RunStore {
   roles: RoomRoleRecord[] = [];
   states = new Map<string, AgentStateRecord>();
   messages: StoredMessage[] = [];
-  audits: Array<{ runId: string; round: number; payload: unknown }> = [];
+  audits: { runId: string; round: number; payload: unknown }[] = [];
   messageSeq = 0;
   clock = () => Date.now();
   /** seedRun 的 settings 基准；测试用它注入自定义预算而不必每次手写。 */
@@ -85,7 +85,7 @@ export class FakeStore implements RunStore {
     } as ClaimedRun);
   }
 
-  seedRoles(roles: Array<Partial<RoomRoleRecord> & { id: string; roomId: string }>): void {
+  seedRoles(roles: (Partial<RoomRoleRecord> & { id: string; roomId: string })[]): void {
     for (const role of roles) {
       this.roles.push({
         aggressiveness: 50,
@@ -279,7 +279,7 @@ export class FakeStore implements RunStore {
   async getRecentAgentContents(
     runId: string,
     limit: number,
-  ): Promise<Array<{ messageId: string; sequence: number; roleId: string | null; content: string }>> {
+  ): Promise<{ messageId: string; sequence: number; roleId: string | null; content: string }[]> {
     return this.messages
       .filter(
         (message) =>
@@ -357,13 +357,13 @@ export class FakeStore implements RunStore {
 
   // ===== 复盘 =====
 
-  summaries: Array<{
+  summaries: {
     runId: string;
     payload: SummaryPayload;
     sourceMessageIds: string[];
     status: string;
     error: string | null;
-  }> = [];
+  }[] = [];
 
   async getRunTranscript(runId: string): Promise<TranscriptMessage[]> {
     const roleName = (roleId: string | null): string =>

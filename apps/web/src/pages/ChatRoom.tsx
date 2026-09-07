@@ -39,8 +39,8 @@ interface RoomDetail {
   online: number;
   messageSeq: number;
   roomRoles: RoomRole[];
-  members: Array<{ id: string; status: string; intent: string; user: { id: string; displayName: string } }>;
-  runs: Array<{ id: string; status: string; topic: string; currentRound: number; createdAt: string }>;
+  members: { id: string; status: string; intent: string; user: { id: string; displayName: string } }[];
+  runs: { id: string; status: string; topic: string; currentRound: number; createdAt: string }[];
 }
 
 interface RunDetail {
@@ -52,12 +52,12 @@ interface RunDetail {
   settings: RunSettings;
   terminationReason: string | null;
   messages: Message[];
-  agentStates: Array<{ roleId: string; state: RoleRunState; mutedUntilRound: number }>;
+  agentStates: { roleId: string; state: RoleRunState; mutedUntilRound: number }[];
 }
 
 interface Policy {
   version: number;
-  rules: Array<{ id: string; label: string; kind: string; enabled: boolean; threshold?: number }>;
+  rules: { id: string; label: string; kind: string; enabled: boolean; threshold?: number }[];
   ladder: string[];
 }
 

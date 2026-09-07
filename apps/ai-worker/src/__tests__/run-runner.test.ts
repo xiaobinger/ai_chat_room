@@ -113,7 +113,7 @@ describe('RunRunner 主循环', () => {
       const round = Math.floor((message.sequence - 1) / 2);
       perRound.set(round, [...(perRound.get(round) ?? []), message.roleId ?? '']);
     }
-    for (const [round, roles] of perRound) {
+    for (const [_round, roles] of perRound) {
       expect(new Set(roles).size).toBe(2);
       expect(roles[0]).not.toBe(roles[1]);
     }
