@@ -23,6 +23,8 @@ export interface SpeakRequest {
   context: ContextTurn[];
   maxTokens: number;
   timeoutMs: number;
+  /** 可被 @点名的其他角色名列表 */
+  availableRoles?: string[];
 }
 
 export interface SpeakResult {
@@ -127,6 +129,9 @@ function pickUsage(data: Record<string, unknown>, key: string): number | null {
 }
 
 function buildSystemPrompt(request: SpeakRequest): string {
+  const mentionHint = request.availableRoles?.length
+    ? `你可以用 @角色名 来点名其他角色，针对它的发言进行回应或反驳。可点名的角色：${request.availableRoles.join('、')}。`
+    : '';
   return [
     request.systemPrompt,
     `本场讨论主题：${request.topic}`,
@@ -134,6 +139,7 @@ function buildSystemPrompt(request: SpeakRequest): string {
     request.stance ? `你的立场：${request.stance}` : '',
     '直接输出发言内容本身，不要加角色名前缀，不要输出解释或标注。',
     `发言控制在 ${request.maxTokens} tokens 以内。`,
+    mentionHint,
   ]
     .filter(Boolean)
     .join('\n');

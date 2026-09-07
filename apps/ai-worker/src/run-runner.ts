@@ -48,6 +48,10 @@ export class RunRunner {
   private readonly publish: (event: RoomEvent) => Promise<void>;
   private readonly log: (message: string) => void;
   private readonly moderator: ModeratorRuntime;
+  /** 最近一条 AI 发言中 @点名的角色 id，下一轮导演优先选它们。 */
+  private pendingMentions: string[] = [];
+  /** 当前房间的角色列表，用于 @点名。 */
+  private currentRoles: RoomRoleRecord[] = [];
 
   constructor(deps: RunRunnerDeps) {
     this.repo = deps.repo;
@@ -181,6 +185,7 @@ export class RunRunner {
       }
 
       const roles = await this.repo.getRoomRoles(current.roomId);
+      this.currentRoles = roles;
       if (roles.length === 0) {
         await this.terminate(current, leaseToken, 'no_available_agents', '房间内没有角色');
         return;
@@ -298,6 +303,24 @@ export class RunRunner {
     return out;
   }
 
+  /**
+   * 解析 AI 发言中的 @点名。
+   * 格式：@角色名（支持中英文 @）。返回被点到的角色 id 列表。
+   */
+  private parseMentions(content: string, roles: RoomRoleRecord[]): string[] {
+    const mentionRe = /@([^\s@,，。！？!?:：；;]+)/g;
+    const mentionedIds: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = mentionRe.exec(content)) !== null) {
+      const name = match[1].trim();
+      const role = roles.find((r) => r.name === name);
+      if (role && !mentionedIds.includes(role.id)) {
+        mentionedIds.push(role.id);
+      }
+    }
+    return mentionedIds;
+  }
+
   private candidates(
     run: ClaimedRun,
     roles: RoomRoleRecord[],
@@ -307,6 +330,7 @@ export class RunRunner {
     humanSpokeRecently = false,
   ): CandidateFeatures[] {
     const byRole = new Map(states.map((state) => [state.roleId, state]));
+    const mentionedSet = new Set(this.pendingMentions);
     return roles.map((role) => {
       const state = byRole.get(role.id);
       const lastSpoke = state?.lastSpokeRound ?? -1;
@@ -314,6 +338,8 @@ export class RunRunner {
       // 人类发言后，给所有 AI 角色 relevance 加分，让导演优先选 AI 来回应人类观点。
       // 进攻性高的角色更倾向于反驳，安静的角色更倾向于支持，各自拿到不同权重。
       const humanResponseBoost = humanSpokeRecently ? 0.3 * (role.aggressiveness / 100) : 0;
+      // @点名：被点到的角色获得高 mentioned 分，导演会优先选它来回应
+      const mentioned = mentionedSet.has(role.id) ? 1 : 0;
       return {
         roleId: role.id,
         // 本轮已发过言的角色视作"忙"，由导演的硬排除挡掉，防止它把整轮吃掉
@@ -325,7 +351,7 @@ export class RunRunner {
         silenceRounds: lastSpoke < 0 ? 0 : run.currentRound - lastSpoke,
         // 没有 LLM 相关度打分时给中性值，让 silence / conflict 决定顺序
         relevance: 0.5 + humanResponseBoost,
-        mentioned: 0,
+        mentioned,
         conflict: role.aggressiveness / 200,
         budgetRemaining,
         maxConsecutiveTurns: settings.maxConsecutiveTurns,
@@ -396,7 +422,7 @@ export class RunRunner {
     }
 
     const context = (await this.repo.getContext(run.id, CONTEXT_WINDOW)) as ContextTurn[];
-    const attempt = await this.callModel(provider, run, role, settings, context);
+    const attempt = await this.callModel(provider, run, role, settings, context, this.currentRoles);
     if (!attempt.ok) {
       await this.failRole(run, role, state, attempt.message);
       return 'skipped';
@@ -426,6 +452,9 @@ export class RunRunner {
     if (message) await this.emit({ roomId: run.roomId, event: { type: 'message', payload: message } });
     // 钱已经花掉了：这笔消耗必须在后续转换之前入账，漏记会让 token_budget 永远打不满
     budget.onTokensSpent(attempt.tokens);
+
+    // 解析 AI 发言中的 @点名，下一轮导演优先选被点名的角色
+    this.pendingMentions = this.parseMentions(attempt.text, this.currentRoles);
 
     if (!roleTransition('speaking', 'COMPLETE_MESSAGE').ok) return 'skipped';
 
@@ -475,6 +504,7 @@ export class RunRunner {
     role: RoomRoleRecord,
     settings: RunSettings,
     context: ContextTurn[],
+    allRoles: RoomRoleRecord[] = [],
   ): Promise<{ ok: true; text: string; tokens: number } | { ok: false; message: string }> {
     let lastMessage = '未知错误';
     // 每次尝试都自带一份完整的 aiTimeoutSeconds 预算（provider 内部用 AbortSignal.timeout）
@@ -489,6 +519,7 @@ export class RunRunner {
           context,
           maxTokens: settings.maxTokensPerMessage,
           timeoutMs: settings.aiTimeoutSeconds * 1000,
+          availableRoles: allRoles.filter((r) => r.id !== role.id).map((r) => r.name),
         });
         return { ok: true, text: result.text, tokens: result.tokens };
       } catch (error) {
