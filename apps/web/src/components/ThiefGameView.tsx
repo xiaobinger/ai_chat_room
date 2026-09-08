@@ -74,6 +74,16 @@ export function ThiefGameView({
     return [...events].reverse().slice(0, 10);
   }, [events]);
 
+  const voteCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const targetId of Object.values(votes)) {
+      if (typeof targetId === 'string') {
+        counts[targetId] = (counts[targetId] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [votes]);
+
   return (
     <div className="thief-game">
       {/* 游戏状态栏 */}
@@ -196,19 +206,14 @@ export function ThiefGameView({
       )}
 
       {/* 投票结果 */}
-      {phase === 'vote' && Object.keys(votes).length > 0 && (
+      {phase === 'vote' && Object.keys(voteCounts).length > 0 && (
         <div className="vote-results">
           <h4>当前票数</h4>
-          {Object.entries(
-            Object.values(votes).reduce<Record<string, number>>((acc, targetId) => {
-              acc[targetId] = (acc[targetId] ?? 0) + 1;
-              return acc;
-            }, {}),
-          ).map(([targetId, count]) => {
+          {Object.entries(voteCounts).map(([targetId, count]) => {
             const target = players.find((p) => p.playerId === targetId);
             return (
               <div key={targetId} className="vote-count">
-                <span>{target?.nickname}</span>
+                <span>{target?.nickname ?? '未知'}</span>
                 <b>{count} 票</b>
               </div>
             );

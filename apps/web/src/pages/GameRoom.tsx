@@ -251,9 +251,12 @@ export default function GameRoom() {
               };
             })}
             votes={(room.gameState as { votes?: Record<string, string> }).votes ?? {}}
-            myRole={((room.gameState as { players?: unknown[] }).players ?? []).find(
-              (p: unknown) => (p as Record<string, unknown>).playerId === room.gamePlayers.find((gp) => gp.userId === room.owner.id)?.id,
-            ) as unknown as string | undefined}
+            myRole={(() => {
+              const found = ((room.gameState as { players?: unknown[] }).players ?? []).find(
+                (p: unknown) => (p as Record<string, unknown>).playerId === room.gamePlayers.find((gp) => gp.userId === room.owner.id)?.id,
+              ) as Record<string, unknown> | undefined;
+              return found?.role as string | undefined;
+            })()}
             isOwner={isOwner}
             canAct={room.gameStatus === 'playing'}
             onSearch={() => void handleGameAction('search')}
