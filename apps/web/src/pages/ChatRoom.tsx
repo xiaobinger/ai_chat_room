@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { MentionPicker, type MentionTarget } from '../components/MentionPicker';
+import { EmojiPicker } from '../components/EmojiPicker';
 import {
   Brain,
   CirclePause,
@@ -78,6 +79,7 @@ export default function ChatRoom() {
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
   const [mentionCaret, setMentionCaret] = useState(-1);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const scroller = useRef<HTMLDivElement | null>(null);
 
@@ -239,6 +241,15 @@ export default function ChatRoom() {
     setDraft(before + inserted + after);
     setMentionOpen(false);
     setMentionFilter('');
+    inputRef.current?.focus();
+  };
+
+  const handleEmojiSelect = (emoji: string) => {
+    const caret = inputRef.current?.selectionStart ?? draft.length;
+    const before = draft.slice(0, caret);
+    const after = draft.slice(caret);
+    setDraft(before + emoji + after);
+    setEmojiOpen(false);
     inputRef.current?.focus();
   };
 
@@ -525,6 +536,14 @@ export default function ChatRoom() {
             </button>
           )}
           <div className="input-wrap">
+            <button
+              className="emoji-btn"
+              onClick={() => setEmojiOpen(!emojiOpen)}
+              type="button"
+              title="表情"
+            >
+              😊
+            </button>
             <input
               ref={inputRef}
               value={draft}
@@ -536,9 +555,20 @@ export default function ChatRoom() {
                   void send();
                 }
               }}
-              onBlur={() => setTimeout(() => setMentionOpen(false), 150)}
+              onBlur={() => {
+                setTimeout(() => {
+                  setMentionOpen(false);
+                  setEmojiOpen(false);
+                }, 150);
+              }}
             />
-            {mentionOpen && (
+            {emojiOpen && (
+              <EmojiPicker
+                onSelect={handleEmojiSelect}
+                onClose={() => setEmojiOpen(false)}
+              />
+            )}
+            {mentionOpen && filteredTargets.length > 0 && (
               <MentionPicker
                 targets={filteredTargets}
                 anchorRef={inputRef}

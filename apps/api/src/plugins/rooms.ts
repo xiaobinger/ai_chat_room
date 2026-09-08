@@ -52,11 +52,12 @@ const ROLE_FIELDS = {
 } as const;
 
 export const roomsPlugin: FastifyPluginAsync = async (fastify) => {
-  /** 大厅：我拥有的 + 我已加入的 + 公开房间。 */
+  /** 大厅：我拥有的 + 我已加入的 + 公开房间（仅聊天室）。 */
   fastify.get('/', async (request) => {
     const user = authedUser(request);
     const rooms = await prisma.room.findMany({
       where: {
+        type: 'discussion',
         status: { not: 'archived' },
         OR: [{ ownerId: user.id }, { visibility: 'public' }, { memberships: { some: { userId: user.id, status: 'approved' } } }],
       },
