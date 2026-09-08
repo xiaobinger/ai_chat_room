@@ -317,6 +317,60 @@ export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
     };
   });
 
+  /** 获取游戏统计 */
+  fastify.get('/stats', async (request) => {
+    const user = authedUser(request);
+
+    // 获取用户参与的所有已完成游戏
+    const participations = await prisma.gamePlayer.findMany({
+      where: { userId: user.id },
+      include: {
+        room: {
+          select: {
+            id: true,
+            gameType: true,
+            gameStatus: true,
+            gameState: true,
+          },
+        },
+      },
+    });
+
+    const finishedGames = participations.filter((p) => p.room.gameStatus === 'finished');
+
+    const stats = {
+      totalGames: finishedGames.length,
+      wins: 0,
+      losses: 0,
+      byGameType: {} as Record<string, { total: number; wins: number }>,
+    };
+
+    for (const game of finishedGames) {
+      const gameState = game.room.gameState as Record<string, unknown> | null;
+      const winner = gameState?.winner as string | undefined;
+      const gameType = game.room.gameType ?? 'unknown';
+
+      if (!stats.byGameType[gameType]) {
+        stats.byGameType[gameType] = { total: 0, wins: 0 };
+      }
+      stats.byGameType[gameType].total += 1;
+
+      // 判断用户是否获胜（简化：狼人阵营赢且用户是狼人，或村民阵营赢且用户不是狼人）
+      const userRole = (game.gameData as { gameRole?: string } | null)?.gameRole;
+      const userIsWerewolf = userRole === 'werewolf';
+      const werewolfWon = winner === 'werewolf';
+
+      if ((werewolfWon && userIsWerewolf) || (!werewolfWon && !userIsWerewolf)) {
+        stats.wins += 1;
+        stats.byGameType[gameType].wins += 1;
+      } else {
+        stats.losses += 1;
+      }
+    }
+
+    return stats;
+  });
+
   /** 游戏动作（投票、发言等） */
   fastify.post('/rooms/:roomId/action', async (request, reply) => {
     const { roomId } = request.params as { roomId: string };

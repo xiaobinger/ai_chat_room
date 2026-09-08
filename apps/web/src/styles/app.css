@@ -172,3 +172,20 @@ cite,.cite-list{display:block}
 .event-text{margin:0;font-size:12px;color:#d4d4dc;line-height:1.5}
 .event-item.game_end .event-content{border-color:#ff758c;background:#1a0f10}
 .event_item.player_death .event-content{border-color:#61393f;background:#150f0f}
+
+.filter-bar{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.search-box{display:flex;align-items:center;gap:8px;flex:1;min-width:200px;border:1px solid #30313b;background:#0d0e13;border-radius:8px;padding:8px 12px}
+.search-box svg{color:#777}
+.search-box input{flex:1;border:0;background:transparent;color:#fff;outline:none;font-size:12px}
+.filter-group{display:flex;align-items:center;gap:8px}
+.filter-group svg{color:#777}
+.filter-group select{border:1px solid #30313b;background:#0d0e13;color:#fff;border-radius:8px;padding:8px 12px;font-size:12px;cursor:pointer}
+
+.stats-bar{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.stat-card{display:flex;align-items:center;gap:10px;padding:12px 16px;background:#0b0c11;border:1px solid #252630;border-radius:10px;min-width:120px}
+.stat-card svg{width:20px;height:20px;color:#ad9eff}
+.stat-card span{display:block;font-size:9px;color:#777}
+.stat-card b{font-size:16px}
+.stat-card.small{min-width:auto;padding:8px 12px}
+.stat-card.small span{font-size:10px}
+.stat-card.small b{font-size:12px}
