@@ -1,5 +1,4 @@
-import type { GameState, GameAction, PlayerState, WerewolfRole } from './types';
-import { getAlivePlayers, getAliveWerewolves, getAliveVillagers } from './werewolf-engine';
+import type { GameState, GameAction, PlayerState } from './types';
 
 /** AI 玩家决策上下文 */
 interface DecisionContext {
@@ -10,7 +9,7 @@ interface DecisionContext {
 
 /** 生成 AI 夜晚行动 */
 export function decideNightAction(ctx: DecisionContext): GameAction | null {
-  const { state, aiPlayer, alivePlayers } = ctx;
+  const { aiPlayer } = ctx;
 
   switch (aiPlayer.role) {
     case 'werewolf':
@@ -26,7 +25,7 @@ export function decideNightAction(ctx: DecisionContext): GameAction | null {
 
 /** 狼人行动：选择一个非狼人玩家杀死 */
 function decideWerewolfAction(ctx: DecisionContext): GameAction | null {
-  const { aiPlayer, alivePlayers, state } = ctx;
+  const { aiPlayer, alivePlayers } = ctx;
 
   // 可杀目标：非狼人且存活
   const targets = alivePlayers.filter((p) => p.role !== 'werewolf' && p.playerId !== aiPlayer.playerId);
@@ -101,7 +100,7 @@ function decideWitchAction(ctx: DecisionContext): GameAction | null {
 
 /** 生成 AI 白天发言 */
 export function generateDaySpeech(ctx: DecisionContext): GameAction {
-  const { aiPlayer, state } = ctx;
+  const { aiPlayer } = ctx;
 
   const messages = generateSpeechContent(ctx);
 
@@ -118,7 +117,6 @@ function generateSpeechContent(ctx: DecisionContext): string {
 
   const myRole = aiPlayer.role;
   const deadTonight = state.deadTonight;
-  const round = state.round;
 
   // 根据角色生成不同风格的发言
   if (myRole === 'werewolf') {

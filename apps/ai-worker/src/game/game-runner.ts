@@ -1,4 +1,4 @@
-import type { GameState, GameAction, PlayerState } from './types';
+import type { GameState, GameAction } from './types';
 import {
   initGameState,
   processAction,
@@ -118,7 +118,7 @@ export class WerewolfGameRunner {
       this.state = processAction(this.state, action);
     }
 
-    this.emit({ type: 'phase_changed', payload: { phase: 'voting', round: this.state.round } });
+    this.emit({ type: 'phase_changed', payload: { phase: 'voting' } });
   }
 
   /** 执行 AI 投票 */
@@ -175,11 +175,6 @@ export class WerewolfGameRunner {
   allAiActed(): boolean {
     const aiPlayers = this.getAiPlayers();
     if (this.state.phase === 'night') {
-      // 夜晚：检查是否有未行动的 AI 狼人/预言家/女巫
-      const activeAi = aiPlayers.filter((ai) => {
-        const state = this.state.players.find((p) => p.playerId === ai.playerId);
-        return state?.isAlive && ['werewolf', 'seer', 'witch'].includes(state.role);
-      });
       // 简化：假设 AI 行动是即时的
       return true;
     }

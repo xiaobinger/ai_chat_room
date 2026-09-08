@@ -1,6 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '@tianma/database';
-import { Forbidden, NotFound, authedUser, roomAccess } from '../auth/guards';
+import { NotFound, authedUser, roomAccess } from '../auth/guards';
 import { roomGateway } from '../ws/room-gateway';
 import { WerewolfGameRunner, type GamePlayerInfo } from '../../../ai-worker/src/game/game-runner';
 
@@ -149,7 +149,7 @@ export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
   /** 邀请用户 */
   fastify.post('/rooms/:roomId/invite', async (request, reply) => {
     const { roomId } = request.params as { roomId: string };
-    const access = await roomAccess(request, roomId, 'owner');
+    await roomAccess(request, roomId, 'owner');
     const { email } = request.body as { email: string };
 
     const target = await prisma.user.findUnique({ where: { email }, select: { id: true, displayName: true } });
@@ -179,7 +179,7 @@ export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
   /** 添加 AI 玩家 */
   fastify.post('/rooms/:roomId/ai', async (request, reply) => {
     const { roomId } = request.params as { roomId: string };
-    const access = await roomAccess(request, roomId, 'owner');
+    await roomAccess(request, roomId, 'owner');
     const body = request.body as { profileId?: string; nickname?: string };
 
     const room = await prisma.room.findFirst({ where: { id: roomId, type: 'entertainment' } });
