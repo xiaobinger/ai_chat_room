@@ -487,6 +487,7 @@ export type RunCommand = z.infer<typeof RunCommandSchema>;
 export const SendMessageInputSchema = z.object({
   content: z.string().min(1).max(8000),
   runId: z.string().uuid().nullable().optional(),
+  mentionRoles: z.array(z.string().uuid()).optional(),
 });
 export type SendMessageInput = z.infer<typeof SendMessageInputSchema>;
 

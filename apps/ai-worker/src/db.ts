@@ -102,7 +102,7 @@ export interface RunStore {
   ): Promise<void>;
   getContext(runId: string, limit: number): Promise<ContextRecord[]>;
   hasRecentHumanMessage(runId: string, lookback: number): Promise<boolean>;
-  getRecentHumanContent(runId: string, limit: number): Promise<{ content: string; sequence: number }[]>;
+  getRecentHumanContent(runId: string, limit: number): Promise<{ content: string; sequence: number; mentionRoles: string[] | null }[]>;
   saveScheduleAudit(runId: string, round: number, payload: unknown): Promise<void>;
   messageForEvent(id: string): Promise<StoredMessage | null>;
   getActivePolicy(roomId: string): Promise<ActivePolicy | null>;
@@ -370,14 +370,18 @@ export class RunRepository implements RunStore {
   }
 
   /** 最近若干条人类发言内容，供解析 @点名。 */
-  async getRecentHumanContent(runId: string, limit: number): Promise<{ content: string; sequence: number }[]> {
+  async getRecentHumanContent(runId: string, limit: number): Promise<{ content: string; sequence: number; mentionRoles: string[] | null }[]> {
     const messages = await prisma.message.findMany({
       where: { runId, status: 'completed', senderType: 'user' },
       orderBy: { sequence: 'desc' },
       take: limit,
-      select: { content: true, sequence: true },
+      select: { content: true, sequence: true, mentionRoles: true },
     });
-    return messages.reverse();
+    return messages.reverse().map((m) => ({
+      content: m.content,
+      sequence: m.sequence,
+      mentionRoles: (m.mentionRoles as string[] | null) ?? null,
+    }));
   }
 
   /** 最近若干条已完成发言，供重复检测取滑动窗口。 */

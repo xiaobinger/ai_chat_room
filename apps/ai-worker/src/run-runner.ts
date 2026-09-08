@@ -334,6 +334,11 @@ export class RunRunner {
   private async resolveHumanMentions(runId: string, roles: RoomRoleRecord[]): Promise<string[]> {
     const recent = await this.repo.getRecentHumanContent(runId, 1);
     if (!recent.length) return [];
+    // 优先使用消息中存储的 mentionRoles（前端解析后传递）
+    if (recent[0].mentionRoles?.length) {
+      return recent[0].mentionRoles;
+    }
+    // 回退：从内容中解析 @点名
     return this.parseMentions(recent[0].content, roles);
   }
 

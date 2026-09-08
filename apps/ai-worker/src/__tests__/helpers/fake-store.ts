@@ -242,11 +242,11 @@ export class FakeStore implements RunStore {
       .length > 0;
   }
 
-  async getRecentHumanContent(runId: string, limit: number): Promise<{ content: string; sequence: number }[]> {
+  async getRecentHumanContent(runId: string, limit: number): Promise<{ content: string; sequence: number; mentionRoles: string[] | null }[]> {
     return this.messages
       .filter((message) => message.runId === runId && message.senderType === 'user' && message.status === 'completed')
       .slice(-limit)
-      .map((message) => ({ content: message.content, sequence: message.sequence }));
+      .map((message) => ({ content: message.content, sequence: message.sequence, mentionRoles: null }));
   }
 
   async getContext(runId: string, limit: number): Promise<ContextRecord[]> {

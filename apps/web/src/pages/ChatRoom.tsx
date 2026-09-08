@@ -260,13 +260,29 @@ export default function ChatRoom() {
     ? mentionTargets.filter((t) => t.name.toLowerCase().includes(mentionFilter.toLowerCase()))
     : [];
 
+  /** 提取消息中的 @点名角色 id */
+  const extractMentionRoles = (content: string): string[] => {
+    const mentionRe = /@([^\s@,，。！？!?:：；;]+)/g;
+    const ids: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = mentionRe.exec(content)) !== null) {
+      const name = match[1];
+      const target = mentionTargets.find((t) => t.name.toLowerCase() === name.toLowerCase());
+      if (target && target.kind === 'role' && !ids.includes(target.id)) {
+        ids.push(target.id);
+      }
+    }
+    return ids;
+  };
+
   const send = async () => {
     const content = draft.trim();
     if (!content || !room) return;
     setMentionOpen(false);
     setSending(true);
     try {
-      await api('POST', `/rooms/${id}/messages`, { content, runId: run?.id ?? null });
+      const mentionRoles = extractMentionRoles(content);
+      await api('POST', `/rooms/${id}/messages`, { content, runId: run?.id ?? null, mentionRoles });
       setDraft('');
     } catch (error) {
       setProblem(describeError(error));

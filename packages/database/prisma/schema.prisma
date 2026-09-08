@@ -433,6 +433,8 @@ model Message {
   senderId   String?           @db.VarChar(36)
   roleId     String?           @db.VarChar(36)
   content    String            @db.Text
+  /// 人类发言中 @点名的角色 id 数组
+  mentionRoles Json?
   status     MessageStatus     @default(completed)
   /// 实际消耗 tokens，供预算审计；模型未返回 usage 时由 chars/4 估算
   tokens     Int?

@@ -289,6 +289,7 @@ export const roomsPlugin: FastifyPluginAsync = async (fastify) => {
       senderType: 'user',
       senderId: access.user.id,
       content: parsed.data.content,
+      mentionRoles: parsed.data.mentionRoles ?? null,
       status: 'completed',
     });
 

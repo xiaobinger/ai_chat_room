@@ -10,6 +10,7 @@ export interface CreateRoomMessageInput {
   senderId?: string | null;
   roleId?: string | null;
   content: string;
+  mentionRoles?: string[] | null;
   status?: 'pending' | 'streaming' | 'completed' | 'failed' | 'deleted';
   tokens?: number | null;
 }
@@ -50,6 +51,7 @@ export async function createRoomMessage(
       senderId: input.senderId ?? null,
       roleId: input.roleId ?? null,
       content: input.content,
+      mentionRoles: input.mentionRoles ? (input.mentionRoles as unknown as Prisma.InputJsonValue) : undefined,
       status: input.status ?? 'completed',
       tokens: input.tokens ?? null,
     },
