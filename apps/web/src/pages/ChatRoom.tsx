@@ -268,7 +268,9 @@ export default function ChatRoom() {
   };
 
   const filteredTargets = mentionOpen
-    ? mentionTargets.filter((t) => t.name.toLowerCase().includes(mentionFilter.toLowerCase()))
+    ? mentionTargets.filter((t) =>
+        !mentionFilter || t.name.toLowerCase().includes(mentionFilter.toLowerCase())
+      )
     : [];
 
   /** 提取消息中的 @点名角色 id */

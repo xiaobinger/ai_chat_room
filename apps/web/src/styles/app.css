@@ -199,3 +199,17 @@ cite,.cite-list{display:block}
 .emoji-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:2px;padding:8px}
 .emoji-btn{border:0;background:transparent;font-size:18px;padding:4px;cursor:pointer;border-radius:4px}
 .emoji-btn:hover{background:#252630}
+
+.mention-picker{position:absolute;bottom:100%;left:0;right:0;max-height:280px;overflow:auto;background:#13141a;border:1px solid #3a3b4a;border-radius:12px;margin-bottom:8px;z-index:50;box-shadow:0 8px 30px #0008}
+.mention-section{padding:4px 0}
+.mention-section+.mention-section{border-top:1px solid #252630}
+.mention-section-title{padding:6px 12px;font-size:10px;font-weight:700;color:#777;text-transform:uppercase;letter-spacing:.5px}
+.mention-item{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;color:#ececf2;padding:10px 12px;cursor:pointer;text-align:left;transition:background .15s}
+.mention-item:hover,.mention-item.selected{background:#1d1930}
+.mention-item.role .mention-name{color:#ad9eff}
+.mention-item.member .mention-name{color:#5ee9a3}
+.mention-avatar{width:32px;height:32px;display:grid;place-items:center;border-radius:8px;font-weight:800;color:#fff;font-size:12px;flex:0 0 auto}
+.mention-name{font-size:13px;font-weight:600;flex:1}
+.mention-badge{font-size:9px;padding:2px 6px;border-radius:4px;font-weight:700}
+.mention-badge.ai{background:#7457ff;color:#fff}
+.mention-real{font-size:10px;color:#777;margin-left:auto}
