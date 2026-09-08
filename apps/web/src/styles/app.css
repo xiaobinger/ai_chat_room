@@ -113,3 +113,38 @@ cite,.cite-list{display:block}
 .id-badge.role-host{background:#ff758c;color:#fff}
 .id-badge.role-debater{background:#2a2440;color:#ad9eff}
 .id-badge.role-observer{background:#20212a;color:#8e90a0}
+
+/* 游戏房间布局 */
+.game-layout{display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:start}
+.game-players{background:#0b0c11;border:1px solid #252630;border-radius:12px;padding:16px}
+.game-players .agent{position:relative}
+.game-players .agent.dead{opacity:.5}
+.game-players .agent.dead .avatar{filter:grayscale(1)}
+.target-btn{border:1px solid #30313a;background:#191a21;color:#bbbcc6;border-radius:6px;padding:4px 6px;cursor:pointer;margin-left:auto}
+.target-btn.selected{background:#7457ff;color:#fff;border-color:#7457ff}
+.game-main{display:grid;gap:16px}
+.game-status-bar{display:flex;align-items:center;gap:16px;padding:16px;background:#0b0c11;border:1px solid #252630;border-radius:12px;margin-bottom:16px}
+.phase-indicator{display:flex;align-items:center;gap:8px;font-weight:700}
+.phase-indicator svg{width:18px;height:18px;color:#ad9eff}
+.phase-indicator small{color:#777;font-weight:400}
+.my-role{margin-left:auto}
+.winner-banner{flex:1;text-align:center;font-size:18px;font-weight:800;color:#ffbd75}
+.day-messages{background:#0b0c11;border:1px solid #252630;border-radius:12px}
+.messages-list{max-height:300px;overflow:auto;padding:12px}
+.messages-list .message{display:flex;gap:10px;margin-bottom:12px}
+.messages-list .message p{margin:4px 0 0;font-size:12px}
+.avatar.small{width:28px;height:28px;font-size:11px}
+.speech-input{display:flex;gap:8px;padding:12px;border-top:1px solid #252630}
+.speech-input input{flex:1}
+.night-actions,.vote-phase{background:#0b0c11;border:1px solid #252630;border-radius:12px;padding:20px}
+.night-actions h3,.vote-phase h3{margin:0 0 12px}
+.vote-count{margin-top:16px}
+.vote-item{padding:4px 0;font-size:12px;color:#8e90a0}
+.game-over{background:#0b0c11;border:1px solid #252630;border-radius:12px;padding:20px;text-align:center}
+.game-over h3{font-size:24px;margin:0 0 20px}
+.final-roles{text-align:left;max-width:400px;margin:auto}
+.final-player{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #252630}
+.final-player .alive{color:#5ee9a3}
+.final-player .dead{color:#ff9b91}
+.death-info{margin-top:16px;padding:12px;background:#271a1c;border:1px solid #61393f;border-radius:8px}
+.death-info p{margin:4px 0;font-size:12px;color:#ff9b91}
