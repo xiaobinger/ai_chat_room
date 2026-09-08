@@ -1,4 +1,4 @@
-import type { DiscussionEntry, MysteryGameState, MysteryPlayerState } from './mystery-types';
+import type { DiscussionEntry, MysteryGameState } from './mystery-types';
 import {
   initMysteryState,
   discoverClue,
