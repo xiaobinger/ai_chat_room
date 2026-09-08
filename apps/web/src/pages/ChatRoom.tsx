@@ -556,6 +556,9 @@ export default function ChatRoom() {
                 <b>
                   {role.name}
                   <span className="id-badge ai">AI</span>
+                  <span className={`id-badge role-${role.type}`}>
+                    {role.type === 'host' ? '主持人' : role.type === 'debater' ? '参与者' : '观察者'}
+                  </span>
                 </b>
                 <small>{runStateLabel(state)}</small>
               </div>

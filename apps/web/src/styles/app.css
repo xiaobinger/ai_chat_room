@@ -109,3 +109,7 @@ cite,.cite-list{display:block}
 .id-badge.witch{background:#8b008b;color:#fff}
 .id-badge.hunter{background:#006400;color:#fff}
 .id-badge.game-role{position:absolute;top:-4px;right:-4px;font-size:8px;padding:1px 4px}
+
+.id-badge.role-host{background:#ff758c;color:#fff}
+.id-badge.role-debater{background:#2a2440;color:#ad9eff}
+.id-badge.role-observer{background:#20212a;color:#8e90a0}
