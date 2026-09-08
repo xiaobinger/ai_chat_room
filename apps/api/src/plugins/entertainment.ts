@@ -3,6 +3,13 @@ import { prisma } from '@tianma/database';
 import { NotFound, authedUser, roomAccess } from '../auth/guards';
 import { roomGateway } from '../ws/room-gateway';
 import { WerewolfGameRunner, type GamePlayerInfo } from '../../../ai-worker/src/game/game-runner';
+import { ThiefGameRunner } from '../../../ai-worker/src/game/thief-game-runner';
+import type { GameAction as WerewolfAction } from '../../../ai-worker/src/game/types';
+import type { InvestigationAction as ThiefAction } from '../../../ai-worker/src/game/who-is-the-thief-types';
+
+type WerewolfActionType = WerewolfAction['type'];
+type ThiefActionType = ThiefAction['type'];
+type InvestigationActionType = ThiefAction['type'];
 
 const GAME_CONFIGS = {
   werewolf: { min: 6, max: 12, label: '狼人杀' },
@@ -11,7 +18,7 @@ const GAME_CONFIGS = {
 };
 
 /** 活跃游戏实例 */
-const activeGames = new Map<string, WerewolfGameRunner>();
+const activeGames = new Map<string, WerewolfGameRunner | ThiefGameRunner>();
 
 export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
   /** 娱乐房间列表 */
@@ -235,7 +242,12 @@ export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
       isAi: p.role === 'ai',
     }));
 
-    const runner = new WerewolfGameRunner(players);
+    let runner: WerewolfGameRunner | ThiefGameRunner;
+    if (room.gameType === 'who_is_the_thief') {
+      runner = new ThiefGameRunner(players);
+    } else {
+      runner = new WerewolfGameRunner(players);
+    }
     activeGames.set(roomId, runner);
 
     // 监听游戏事件并广播
@@ -256,9 +268,11 @@ export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
       payload: { gameState: gameState as unknown as Record<string, unknown>, players: room.gamePlayers.map((p) => ({ id: p.id, nickname: p.nickname, role: p.role })) },
     });
 
-    // 如果是狼人杀，自动开始夜晚
+    // 根据游戏类型启动
     if (room.gameType === 'werewolf') {
       setTimeout(() => void processNightPhase(roomId), 1000);
+    } else if (room.gameType === 'who_is_the_thief') {
+      setTimeout(() => void processThiefInvestigation(roomId), 1000);
     }
 
     return reply.status(200).send({ gameStatus: 'playing', gameState });
@@ -382,16 +396,26 @@ export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
 
     const membership = await prisma.gamePlayer.findFirst({
       where: { roomId, userId: user.id },
+      select: { id: true },
     });
     if (!membership) return reply.status(403).send({ error: 'not_a_player' });
 
     // 处理玩家动作
-    runner.handlePlayerAction({
-      type: body.type as never,
-      playerId: membership.id,
-      targetId: body.targetId,
-      content: body.content,
-    });
+    if (runner instanceof ThiefGameRunner) {
+      runner.handlePlayerAction({
+        type: body.type as InvestigationActionType,
+        actorId: membership.id,
+        targetId: body.targetId,
+        content: body.content || '',
+      });
+    } else if (runner instanceof WerewolfGameRunner) {
+      runner.handlePlayerAction({
+        type: body.type as WerewolfActionType,
+        playerId: membership.id,
+        targetId: body.targetId,
+        content: body.content,
+      });
+    }
 
     // 更新数据库状态
     await prisma.room.update({
@@ -418,7 +442,7 @@ async function maybeReady(roomId: string) {
 /** 处理夜晚阶段 */
 async function processNightPhase(roomId: string) {
   const runner = activeGames.get(roomId);
-  if (!runner) return;
+  if (!runner || !(runner instanceof WerewolfGameRunner)) return;
 
   await runner.processNightActions();
 
@@ -443,7 +467,7 @@ async function processNightPhase(roomId: string) {
 /** 处理白天阶段 */
 async function processDayPhase(roomId: string) {
   const runner = activeGames.get(roomId);
-  if (!runner) return;
+  if (!runner || !(runner instanceof WerewolfGameRunner)) return;
 
   await runner.processDaySpeeches();
 
@@ -475,4 +499,41 @@ async function processDayPhase(roomId: string) {
 
   // 进入下一轮夜晚
   setTimeout(() => void processNightPhase(roomId), 2000);
+}
+
+/** 处理谁是凶手 - 调查阶段 */
+async function processThiefInvestigation(roomId: string) {
+  const runner = activeGames.get(roomId);
+  if (!runner || !(runner instanceof ThiefGameRunner)) return;
+
+  await runner.processInvestigation();
+
+  // 更新数据库
+  await prisma.room.update({
+    where: { id: roomId },
+    data: { gameState: runner.getState() as object },
+  });
+
+  // AI 投票
+  await runner.processAiVotes();
+
+  // 结算投票
+  runner.resolveVotes();
+
+  // 更新数据库
+  await prisma.room.update({
+    where: { id: roomId },
+    data: { gameState: runner.getState() as object },
+  });
+
+  // 检查游戏是否结束
+  const state = runner.getState();
+  if (state.phase === 'result') {
+    await prisma.room.update({ where: { id: roomId }, data: { gameStatus: 'finished' } });
+    activeGames.delete(roomId);
+    return;
+  }
+
+  // 进入下一轮
+  setTimeout(() => void processThiefInvestigation(roomId), 2000);
 }
