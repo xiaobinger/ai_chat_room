@@ -22,9 +22,10 @@ enum RoomType {
 
 /// 游戏类型
 enum GameType {
-  werewolf        // 狼人杀
-  murder_mystery  // 剧本杀
+  werewolf         // 狼人杀
+  murder_mystery   // 剧本杀
   who_is_the_thief // 谁是凶手
+  who_is_undercover // 谁是卧底
 }
 
 /// 游戏状态

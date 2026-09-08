@@ -62,6 +62,7 @@ export function initMysteryState(
   }));
 
   return {
+    format: 2,
     phase: 'introduction',
     round: 1,
     players: playerStates,
@@ -73,6 +74,7 @@ export function initMysteryState(
     discoveredClues: [],
     discussionLog: [],
     votes: {},
+    voteStatus: {},
     events: [
       {
         id: crypto.randomUUID(),
@@ -126,12 +128,15 @@ export function addDiscussion(
   const next = structuredClone(state);
   const player = next.players.find((p) => p.playerId === playerId);
   if (!player) return state;
+  if (player.hasSpoken) return state;
+  const text = content.trim().slice(0, 200);
+  if (!text) return state;
 
   const entry: DiscussionEntry = {
     playerId,
     playerName: player.nickname,
     characterName: player.character.name,
-    content,
+    content: text,
     timestamp: Date.now(),
     type,
   };
@@ -146,10 +151,59 @@ export function addDiscussion(
     type: 'roleplay',
     actorName: player.nickname,
     characterName: player.character.name,
-    content: `${player.nickname}（${player.character.name}）：${content}`,
+    content: `${player.nickname}（${player.character.name}）：${text}`,
     timestamp: Date.now(),
   });
 
+  return next;
+}
+
+/** 跳过发言 */
+export function skipDiscussion(state: MysteryGameState, playerId: string): MysteryGameState {
+  const next = structuredClone(state);
+  const player = next.players.find((p) => p.playerId === playerId);
+  if (!player || player.hasSpoken) return state;
+  player.hasSpoken = true;
+  next.events.push({
+    id: crypto.randomUUID(),
+    round: next.round,
+    phase: next.phase,
+    type: 'roleplay',
+    actorName: player.nickname,
+    characterName: player.character.name,
+    content: `${player.nickname}（${player.character.name}）沉默不语。`,
+    timestamp: Date.now(),
+  });
+  return next;
+}
+
+/** 随机发现一条未公开线索（人类/AI 搜证共用） */
+export function searchRandomClue(state: MysteryGameState, playerId: string): MysteryGameState {
+  const next = structuredClone(state);
+  const undiscovered = next.clues.filter((c) => !next.discoveredClues.includes(c.id));
+  if (undiscovered.length === 0) return state;
+  const clue = undiscovered[Math.floor(Math.random() * undiscovered.length)];
+  return discoverClue(next, playerId, clue.id);
+}
+
+/** 投票（targetId 为 null 表示弃票） */
+export function applyMysteryVote(state: MysteryGameState, playerId: string, targetId: string | null): MysteryGameState {
+  const next = structuredClone(state);
+  const voter = next.players.find((p) => p.playerId === playerId);
+  if (!voter) return state;
+  if (next.phase !== 'voting') return state;
+  if (!voter.isAlive) return state;
+  if (next.voteStatus[playerId]) return state;
+
+  if (targetId === null) {
+    next.voteStatus[playerId] = 'abstained';
+    return next;
+  }
+  const target = next.players.find((p) => p.playerId === targetId);
+  if (!target || !target.isAlive || targetId === playerId) return state;
+
+  next.voteStatus[playerId] = 'voted';
+  next.votes[playerId] = targetId;
   return next;
 }
 
@@ -323,20 +377,48 @@ export function checkMysteryEnd(state: MysteryGameState): boolean {
 }
 
 /** 获取玩家可见信息 */
-export function getPlayerView(state: MysteryGameState, playerId: string) {
+export function getPlayerView(state: MysteryGameState, playerId: string | null) {
   const me = state.players.find((p) => p.playerId === playerId);
-  if (!me) return null;
+  const finished = state.phase === 'reveal';
+  if (!me && !finished) {
+    // 观众且未结束：只看公开信息
+    return {
+      format: state.format,
+      phase: state.phase,
+      round: state.round,
+      game: 'murder_mystery',
+      victim: state.victim,
+      crimeScene: state.crimeScene,
+      murderWeapon: '???',
+      discoveredClues: state.clues.filter((c) => state.discoveredClues.includes(c.id)),
+      discussionLog: state.discussionLog,
+      voteStatus: state.voteStatus,
+      votes: state.phase === 'voting' ? {} : state.votes,
+      players: state.players.map((p) => ({
+        playerId: p.playerId,
+        nickname: p.nickname,
+        character: { name: p.character.name, role: p.character.role },
+        isAlive: p.isAlive,
+      })),
+      winner: state.winner,
+      events: state.events,
+    };
+  }
 
   return {
+    format: state.format,
     phase: state.phase,
     round: state.round,
+    game: 'murder_mystery',
     victim: state.victim,
     crimeScene: state.crimeScene,
-    murderWeapon: me.character.isMurderer ? state.murderWeapon : '???',
-    myCharacter: me.character,
+    murderWeapon: finished ? state.murderWeapon : me?.character.isMurderer ? state.murderWeapon : '???',
+    myCharacter: me?.character,
     discoveredClues: state.clues.filter((c) => state.discoveredClues.includes(c.id)),
+    totalClueCount: state.clues.length,
     discussionLog: state.discussionLog,
-    votes: state.votes,
+    voteStatus: state.voteStatus,
+    votes: state.phase === 'voting' ? {} : state.votes,
     players: state.players.map((p) => ({
       playerId: p.playerId,
       nickname: p.nickname,
@@ -344,11 +426,15 @@ export function getPlayerView(state: MysteryGameState, playerId: string) {
         name: p.character.name,
         role: p.character.role,
         personality: p.character.personality,
-        isMurderer: state.phase === 'reveal' ? p.character.isMurderer : undefined,
+        isMurderer: finished ? p.character.isMurderer : undefined,
       },
       isAlive: p.isAlive,
-      suspicionLevel: p.suspicionLevel,
+      isMe: p.playerId === playerId,
+      hasSpoken: p.hasSpoken,
+      hasSearched: p.hasSearched,
     })),
+    murdererId: finished ? state.murdererId : undefined,
+    accusedMurdererId: state.accusedMurdererId,
     winner: state.winner,
     events: state.events,
   };

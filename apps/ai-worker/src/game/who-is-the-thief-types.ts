@@ -1,6 +1,6 @@
-/** 谁是凶手游戏类型定义 */
+/** 谁是凶手游戏类型定义（v2：人类投票 + 侦探私密结果 + 视角净化） */
 
-export type ThiefPhase = 'investigation' | 'voting' | 'accusation' | 'result';
+export type ThiefPhase = 'investigation' | 'voting' | 'result';
 
 export type ThiefRole = 'thief' | 'detective' | 'citizen' | 'master_thief' | 'accomplice' | 'witness';
 
@@ -9,37 +9,23 @@ export interface ThiefPlayerState {
   nickname: string;
   role: ThiefRole;
   isAlive: boolean;
-  hasSpoken: boolean;           // 本轮是否已发言
-  hasInvestigated: boolean;     // 侦探本轮是否已调查
-  votes: number;                // 获得票数
-  isProtected: boolean;         // 是否被保护（目击者能力）
-  hasFramed: boolean;           // 是否已嫁祸他人
-  hasRevealedClue: boolean;     // 目击者是否已揭示线索
+  /** 本轮是否已发言 */
+  hasSpoken: boolean;
+  /** 侦探本轮是否已调查 */
+  hasInvestigated: boolean;
+  /** 累计嫌疑（被投票 + 被嫁祸） */
+  suspicion: number;
+  /** 小偷是否已嫁祸（整局一次） */
+  hasFramed: boolean;
+  /** 目击者是否已揭示线索（整局一次） */
+  hasRevealedClue: boolean;
 }
 
-export interface InvestigationAction {
-  type: 'question' | 'answer' | 'investigate' | 'frame' | 'reveal_clue';
-  actorId: string;
-  targetId?: string;
-  content: string;
-  result?: string;
-}
-
-export interface ThiefGameState {
-  phase: ThiefPhase;
+export interface ThiefSpeech {
   round: number;
-  players: ThiefPlayerState[];
-  thiefId: string;                        // 小偷 id
-  detectiveId: string;                    // 侦探 id
-  actions: InvestigationAction[];
-  votes: Record<string, string>;           // voterId -> targetId
-  accusedPlayerId?: string;               // 被指控的玩家
-  winner?: 'thief' | 'citizen';
-  stolenItem: string;                     // 失窃物品
-  crimeScene: string;                     // 案发现场描述
-  clues: string[];                        // 线索列表
-  events: ThiefGameEvent[];
-  masterThiefEscapeUsed: boolean;         // 神偷是否已使用金蝉脱壳
+  playerId: string;
+  nickname: string;
+  content: string;
 }
 
 export interface ThiefGameEvent {
@@ -51,7 +37,31 @@ export interface ThiefGameEvent {
   targetName?: string;
   content: string;
   timestamp: number;
-  role?: ThiefRole;
+}
+
+export interface ThiefGameState {
+  format: 2;
+  phase: ThiefPhase;
+  round: number;
+  players: ThiefPlayerState[];
+  /** 小偷阵营（结束前对玩家隐藏） */
+  thiefTeamIds: string[];
+  /** 公开发言记录 */
+  speechLog: ThiefSpeech[];
+  /** 私密信息（侦探查验结果等，按玩家隔离） */
+  privateNotes: Record<string, string[]>;
+  /** 已公开的线索 */
+  revealedClues: string[];
+  votes: Record<string, string>;
+  voteStatus: Record<string, 'voted' | 'abstained'>;
+  accusedPlayerId?: string;
+  winner?: 'thief' | 'citizen';
+  stolenItem: string;
+  crimeScene: string;
+  /** 本局全部线索（未公开前对玩家不可见） */
+  clues: string[];
+  masterThiefEscapeUsed: boolean;
+  events: ThiefGameEvent[];
 }
 
 export const THIEF_ROLE_LABELS: Record<ThiefRole, string> = {
@@ -64,12 +74,12 @@ export const THIEF_ROLE_LABELS: Record<ThiefRole, string> = {
 };
 
 export const THIEF_ROLE_DESCRIPTIONS: Record<ThiefRole, string> = {
-  thief: '你是小偷！隐藏自己的身份，避免被投票出局。可以嫁祸他人一次。',
-  detective: '你是侦探！每轮可以调查一名玩家，确认其是否为小偷偷。带领市民找出真凶！',
+  thief: '你是小偷！隐藏自己的身份，避免被投票出局。可以嫁祸他人一次（悄悄增加其嫌疑）。',
+  detective: '你是侦探！每轮可以调查一名玩家，确认其是否为小偷（结果只有你知道）。带领市民找出真凶！',
   citizen: '你是普通市民！通过观察和推理，找出真正的小偷并投票将其出局。',
   master_thief: '你是神偷！即使被投票出局，也可以使用金蝉脱壳逃脱一次。',
   accomplice: '你是同伙！帮助小偷隐藏身份，你们共同获胜。',
-  witness: '你是目击者！你知道一条关于小偷的线索。可以揭示线索帮助市民。',
+  witness: '你是目击者！你知道一条关于案件的线索。可以公开一条线索帮助市民（整局一次）。',
 };
 
 // 失窃物品池

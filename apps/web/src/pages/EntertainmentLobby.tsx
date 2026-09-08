@@ -27,6 +27,7 @@ const GAME_LABELS: Record<string, string> = {
   werewolf: '狼人杀',
   murder_mystery: '剧本杀',
   who_is_the_thief: '谁是凶手',
+  who_is_undercover: '谁是卧底',
   unknown: '未知',
 };
 
@@ -40,6 +41,7 @@ const STATUS_LABELS: Record<string, string> = {
 const GAME_TYPES = [
   { id: '', label: '全部' },
   { id: 'werewolf', label: '狼人杀' },
+  { id: 'who_is_undercover', label: '谁是卧底' },
   { id: 'murder_mystery', label: '剧本杀' },
   { id: 'who_is_the_thief', label: '谁是凶手' },
 ];

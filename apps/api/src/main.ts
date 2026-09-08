@@ -4,6 +4,7 @@ import { buildApp } from './app';
 import { runQueue } from './queue';
 import { roomGateway } from './ws/room-gateway';
 import { startRedisBridge } from './ws/redis-bridge';
+import { GameDirector } from './game/game-director';
 
 let bridge: RoomEventSubscription | null = null;
 let shuttingDown: Promise<void> | null = null;
@@ -15,6 +16,7 @@ async function shutdown(reason: string): Promise<void> {
     // 先停止消费与广播，再关连接，最后释放 DB 池
     await runQueue.close().catch((error: unknown) => console.error('[api] queue close failed', error));
     await bridge?.close().catch((error: unknown) => console.error('[api] bridge close failed', error));
+    GameDirector.disposeAll();
     roomGateway.closeAll();
     await prisma.$disconnect().catch((error: unknown) => console.error('[api] prisma close failed', error));
   })();

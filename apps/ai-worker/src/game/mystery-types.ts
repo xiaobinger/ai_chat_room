@@ -37,6 +37,7 @@ export interface MysteryPlayerState {
 }
 
 export interface MysteryGameState {
+  format: 2;
   phase: MysteryPhase;
   round: number;
   players: MysteryPlayerState[];
@@ -48,6 +49,7 @@ export interface MysteryGameState {
   discoveredClues: string[];         // 已发现的线索 id
   discussionLog: DiscussionEntry[];
   votes: Record<string, string>;      // voterId -> targetId
+  voteStatus: Record<string, 'voted' | 'abstained'>;
   accusedMurdererId?: string;         // 被指控的凶手
   winner?: 'murderer' | 'detectives';
   events: MysteryGameEvent[];

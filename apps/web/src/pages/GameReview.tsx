@@ -8,12 +8,11 @@ interface GameEvent {
   id: string;
   round: number;
   phase: string;
-  type: 'phase_change' | 'player_action' | 'player_death' | 'vote_result' | 'game_start' | 'game_end';
+  type: string;
   actorName?: string;
   targetName?: string;
   content: string;
   timestamp: number;
-  role?: string;
 }
 
 interface GameReviewData {
@@ -28,6 +27,9 @@ interface GameReviewData {
     id: string;
     nickname: string;
     role: 'human' | 'ai';
+    isAlive: boolean;
+    gameRole: string | null;
+    won: boolean | null;
   }[];
   events: GameEvent[];
   winner?: string;
@@ -37,14 +39,14 @@ const GAME_LABELS: Record<string, string> = {
   werewolf: '狼人杀',
   murder_mystery: '剧本杀',
   who_is_the_thief: '谁是凶手',
+  who_is_undercover: '谁是卧底',
 };
 
-const ROLE_LABELS: Record<string, string> = {
-  werewolf: '狼人',
-  villager: '村民',
-  seer: '预言家',
-  witch: '女巫',
-  hunter: '猎人',
+const WINNER_LABELS: Record<string, Record<string, string>> = {
+  werewolf: { werewolf: '狼人阵营', villager: '好人阵营' },
+  murder_mystery: { murderer: '凶手', detectives: '侦探们' },
+  who_is_the_thief: { thief: '小偷阵营', citizen: '市民阵营' },
+  who_is_undercover: { undercover: '卧底', civilians: '平民' },
 };
 
 const EVENT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
@@ -52,8 +54,13 @@ const EVENT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   phase_change: { label: '阶段切换', color: '#ad9eff' },
   player_action: { label: '玩家行动', color: '#5ee9a3' },
   player_death: { label: '玩家死亡', color: '#ff9b91' },
+  player_eliminated: { label: '玩家出局', color: '#ff9b91' },
   vote_result: { label: '投票结果', color: '#ffbd75' },
   game_end: { label: '游戏结束', color: '#ff758c' },
+  clue_found: { label: '发现线索', color: '#5ee9a3' },
+  clue_discovered: { label: '发现线索', color: '#5ee9a3' },
+  special_event: { label: '特殊事件', color: '#ffbd75' },
+  roleplay: { label: '角色发言', color: '#8ec9ff' },
 };
 
 export default function GameReview() {
@@ -91,6 +98,10 @@ export default function GameReview() {
     );
   }
 
+  const winnerText = review.winner
+    ? WINNER_LABELS[review.room.gameType]?.[review.winner] ?? review.winner
+    : null;
+
   return (
     <Shell>
       <Top
@@ -105,6 +116,9 @@ export default function GameReview() {
       />
       <div className="content">
         {problem && <Notice kind="error">{problem}</Notice>}
+        {review.room.gameStatus !== 'finished' && (
+          <Notice kind="info">本局还未结束，复盘数据将在游戏结束后完整开放。</Notice>
+        )}
 
         {/* 游戏概览 */}
         <div className="review-overview">
@@ -112,7 +126,7 @@ export default function GameReview() {
             <Trophy />
             <div>
               <span>获胜方</span>
-              <b>{review.winner === 'werewolf' ? '🐺 狼人' : review.winner === 'villager' ? '👥 村民' : '未知'}</b>
+              <b>{winnerText ?? '未知'}</b>
             </div>
           </div>
           <div className="overview-card">
@@ -135,23 +149,22 @@ export default function GameReview() {
         <div className="review-section">
           <h3>玩家身份</h3>
           <div className="player-roles">
-            {review.players.map((p) => {
-              const gameData = review.events.find((e) => e.actorName === p.nickname)?.role;
-              return (
-                <div key={p.id} className="player-role-card">
-                  <span className="avatar" style={{ background: p.role === 'ai' ? '#6f52d9' : '#2871c9' }}>
-                    {p.nickname.slice(0, 1)}
-                  </span>
-                  <div>
-                    <b>{p.nickname}</b>
-                    <small>
-                      {p.role === 'ai' ? 'AI 玩家' : '人类玩家'}
-                      {gameData && ` · ${ROLE_LABELS[gameData] ?? gameData}`}
-                    </small>
-                  </div>
+            {review.players.map((p) => (
+              <div key={p.id} className="player-role-card">
+                <span className="avatar" style={{ background: p.role === 'ai' ? '#6f52d9' : '#2871c9' }}>
+                  {p.nickname.slice(0, 1)}
+                </span>
+                <div>
+                  <b>{p.nickname}</b>
+                  <small>
+                    {p.role === 'ai' ? 'AI 玩家' : '人类玩家'}
+                    {p.gameRole && ` · ${p.gameRole}`}
+                    {p.won === true && ' · 🏆 获胜'}
+                    {p.won === false && ' · 失败'}
+                  </small>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         </div>
 
@@ -169,16 +182,14 @@ export default function GameReview() {
                       <span className="event-type" style={{ color: typeInfo.color }}>
                         {typeInfo.label}
                       </span>
-                      <span className="event-round">
-                        第 {event.round} 轮
-                        {event.phase && ` · ${event.phase === 'night' ? '夜晚' : event.phase === 'day' ? '白天' : event.phase === 'vote' ? '投票' : event.phase}`}
-                      </span>
+                      <span className="event-round">第 {event.round} 轮</span>
                     </div>
                     <p className="event-text">{event.content}</p>
                   </div>
                 </div>
               );
             })}
+            {review.events.length === 0 && <p className="hint">暂无游戏记录。</p>}
           </div>
         </div>
       </div>

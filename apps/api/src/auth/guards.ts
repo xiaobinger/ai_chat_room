@@ -143,7 +143,11 @@ export async function roomAccess(
   return { user, room, isOwner, isMember };
 }
 
-/** 供 WS 握手等只需"能不能进这个房间"的场景复用的轻量判定。 */
+/**
+ * 供 WS 握手等只需"能不能进这个房间"的场景复用的轻量判定。
+ * 娱乐房间的玩家在 GamePlayer 表里，不算 Membership，必须一并放行，
+ * 否则游戏房里除房主外的所有人都会被 WS 拒之门外（4403）。
+ */
 export async function isRoomParticipant(userId: string, roomId: string): Promise<boolean> {
   const room = await prisma.room.findUnique({
     where: { id: roomId },
@@ -155,5 +159,10 @@ export async function isRoomParticipant(userId: string, roomId: string): Promise
     where: { roomId_userId: { roomId, userId } },
     select: { status: true },
   });
-  return membership?.status === 'approved';
+  if (membership?.status === 'approved') return true;
+  const gamePlayer = await prisma.gamePlayer.findUnique({
+    where: { roomId_userId: { roomId, userId } },
+    select: { id: true },
+  });
+  return Boolean(gamePlayer);
 }

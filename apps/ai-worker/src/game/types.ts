@@ -1,4 +1,4 @@
-/** 狼人杀游戏类型定义 */
+/** 狼人杀游戏类型定义（v2：整局限药 + 多狼投票 + 猎人开枪 + 阶段状态追踪） */
 
 export type GamePhase = 'night' | 'day' | 'vote' | 'finished';
 
@@ -9,7 +9,8 @@ export interface PlayerState {
   nickname: string;
   role: WerewolfRole;
   isAlive: boolean;
-  isProtected?: boolean;
+  /** 累计被投票数（AI 启发式用，不泄露身份） */
+  suspicion: number;
 }
 
 export interface GameLogEntry {
@@ -23,24 +24,15 @@ export interface GameLogEntry {
   targetName?: string;
   content: string;
   timestamp: number;
+  /** 仅复盘用；玩家视角会剥离 */
   role?: WerewolfRole;
 }
 
-export interface GameState {
-  phase: GamePhase;
+export interface SeerCheckResult {
   round: number;
-  players: PlayerState[];
-  werewolfTarget?: string;
-  seerTarget?: string;
-  seerResult?: { target: string; isWerewolf: boolean };
-  witchAction?: { type: 'save' | 'poison'; target?: string };
-  dayMessages: DayMessage[];
-  votes: Record<string, string>;
-  deadTonight: string[];
-  deadToday: string[];
-  winner?: 'werewolf' | 'villager';
-  hunterCanShoot?: boolean;
-  events: GameLogEntry[];
+  target: string;
+  targetName: string;
+  isWerewolf: boolean;
 }
 
 export interface DayMessage {
@@ -50,12 +42,53 @@ export interface DayMessage {
   timestamp: number;
 }
 
-export interface GameAction {
-  type: 'werewolf_kill' | 'seer_check' | 'witch_save' | 'witch_poison' | 'day_speak' | 'vote' | 'hunter_shoot';
-  playerId: string;
-  targetId?: string;
-  content?: string;
+export interface GameState {
+  /** 状态结构版本；旧数据（无此字段）不做重启恢复 */
+  format: 2;
+  phase: GamePhase;
+  round: number;
+  players: PlayerState[];
+  /** 夜晚：狼人击杀投票（狼人 playerId -> 目标 playerId） */
+  wolfVotes: Record<string, string>;
+  /** 夜晚：本轮已查验的目标（防重复查验） */
+  seerCheckedTonight: string[];
+  /** 预言家查验历史（仅预言家视角可见） */
+  seerChecks: SeerCheckResult[];
+  /** 女巫药剂：整局各一次 */
+  witchPotions: { save: boolean; poison: boolean };
+  /** 女巫今晚决策 */
+  witchTonight?: 'save' | 'poison' | 'pass';
+  /** 女巫毒杀目标（今晚） */
+  witchPoisonTarget?: string;
+  /** 狼刀目标（夜晚结算前，仅女巫视角可见） */
+  nightVictim?: string;
+  /** 白天发言状态 */
+  speechStatus: Record<string, 'spoken' | 'skipped'>;
+  dayMessages: DayMessage[];
+  /** 投票状态 */
+  voteStatus: Record<string, 'voted' | 'abstained'>;
+  votes: Record<string, string>;
+  /** 待开枪猎人（白天待结算） */
+  pendingHunter?: string;
+  /** 今晚死亡（结算后） */
+  deadTonight: string[];
+  /** 今天放逐/开枪死亡 */
+  deadToday: string[];
+  winner?: 'werewolf' | 'villager';
+  events: GameLogEntry[];
 }
+
+export type GameActionType =
+  | 'werewolf_kill'
+  | 'seer_check'
+  | 'witch_save'
+  | 'witch_poison'
+  | 'witch_pass'
+  | 'day_speak'
+  | 'day_skip'
+  | 'vote'
+  | 'vote_abstain'
+  | 'hunter_shoot';
 
 export const ROLE_LABELS: Record<WerewolfRole, string> = {
   werewolf: '狼人',
@@ -66,9 +99,9 @@ export const ROLE_LABELS: Record<WerewolfRole, string> = {
 };
 
 export const ROLE_DESCRIPTIONS: Record<WerewolfRole, string> = {
-  werewolf: '每晚可以杀死一名玩家。目标是杀光所有村民。',
-  villager: '没有特殊能力。通过投票找出狼人。',
-  seer: '每晚可以查验一名玩家的身份。',
-  witch: '拥有一瓶解药和一瓶毒药。解药可以救活当晚被杀的玩家，毒药可以毒死一名玩家。每种药整局只能使用一次。',
-  hunter: '死亡时（被投票或被狼人杀死）可以开枪带走一名玩家。',
+  werewolf: '每晚与同伴共同选择一名玩家击杀。目标是消灭所有好人。',
+  villager: '没有特殊能力。通过白天发言和投票找出狼人。',
+  seer: '每晚可以查验一名玩家的阵营。用金水和查杀带领好人。',
+  witch: '拥有一瓶解药和一瓶毒药，整局各只能使用一次。解药可以救活当晚被刀的玩家，毒药可以毒死一名玩家。',
+  hunter: '被投票出局或被狼人杀死时，可以开枪带走一名玩家（被毒死无法开枪）。',
 };

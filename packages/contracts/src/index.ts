@@ -581,7 +581,8 @@ export const WSEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('game_started'),
     payload: z.object({
-      gameState: z.record(z.unknown()),
+      /** 对局中的完整状态不再广播（防作弊），前端通过 /state 拉取各自的净化视角 */
+      gameState: z.record(z.unknown()).optional(),
       players: z.array(z.object({ id: z.string(), nickname: z.string(), role: z.enum(['human', 'ai']) })),
     }),
   }),
@@ -624,6 +625,14 @@ export const WSEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('game_clue_found'),
     payload: z.record(z.unknown()),
+  }),
+  z.object({
+    type: z.literal('game_state_updated'),
+    payload: z.object({
+      phase: z.string(),
+      round: z.number().optional(),
+      deadline: z.number().nullable().optional(),
+    }),
   }),
 ]);
 export type WSEvent = z.infer<typeof WSEventSchema>;

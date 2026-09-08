@@ -1,214 +1,159 @@
-import type { GameState, GameAction, PlayerState } from './types';
+import type { GameState, PlayerState } from './types';
 
 /** AI 玩家决策上下文 */
 interface DecisionContext {
   state: GameState;
   aiPlayer: PlayerState;
-  alivePlayers: PlayerState[];
 }
 
-/** 生成 AI 夜晚行动 */
-export function decideNightAction(ctx: DecisionContext): GameAction | null {
-  const { aiPlayer } = ctx;
+const pick = <T>(list: T[]): T | undefined =>
+  list.length > 0 ? list[Math.floor(Math.random() * list.length)] : undefined;
 
-  switch (aiPlayer.role) {
-    case 'werewolf':
-      return decideWerewolfAction(ctx);
-    case 'seer':
-      return decideSeerAction(ctx);
-    case 'witch':
-      return decideWitchAction(ctx);
-    default:
-      return null;
+/** 是否有人声称自己是预言家（按发言文本粗判，狼人刀人/投票参考） */
+function claimedSeer(state: GameState): PlayerState | undefined {
+  for (const message of state.dayMessages) {
+    if (message.content.includes('预言家')) {
+      return state.players.find((p) => p.playerId === message.playerId && p.isAlive);
+    }
   }
+  return undefined;
 }
 
-/** 狼人行动：选择一个非狼人玩家杀死 */
-function decideWerewolfAction(ctx: DecisionContext): GameAction | null {
-  const { aiPlayer, alivePlayers } = ctx;
+// ===== 夜晚 =====
 
-  // 可杀目标：非狼人且存活
-  const targets = alivePlayers.filter((p) => p.role !== 'werewolf' && p.playerId !== aiPlayer.playerId);
-  if (targets.length === 0) return null;
+/** 狼人：优先刀跳预言家的人，否则随机（不偷看身份） */
+export function decideWolfKill(ctx: DecisionContext): string | undefined {
+  const { state } = ctx;
+  const targets = state.players.filter((p) => p.isAlive && p.role !== 'werewolf');
+  if (targets.length === 0) return undefined;
 
-  // 优先杀有特殊能力的玩家（预言家、女巫、猎人）
-  const priorityTargets = targets.filter((p) => p.role === 'seer' || p.role === 'witch' || p.role === 'hunter');
-  const candidateTargets = priorityTargets.length > 0 ? priorityTargets : targets;
-
-  // 随机选择一个目标
-  const target = candidateTargets[Math.floor(Math.random() * candidateTargets.length)];
-
-  return {
-    type: 'werewolf_kill',
-    playerId: aiPlayer.playerId,
-    targetId: target.playerId,
-  };
+  const claimant = claimedSeer(state);
+  if (claimant && Math.random() < 0.7) return claimant.playerId;
+  return pick(targets)?.playerId;
 }
 
-/** 预言家行动：选择一个未查验过的玩家查验 */
-function decideSeerAction(ctx: DecisionContext): GameAction | null {
-  const { aiPlayer, alivePlayers, state } = ctx;
-
-  // 可查验目标：存活且不是自己，且未查验过
-  const checkedTargets = state.seerResult ? [state.seerResult.target] : [];
-  const targets = alivePlayers.filter(
-    (p) => p.playerId !== aiPlayer.playerId && !checkedTargets.includes(p.playerId),
+/** 预言家：随机查验一个未查过的人 */
+export function decideSeerCheck(ctx: DecisionContext): string | undefined {
+  const { state, aiPlayer } = ctx;
+  const checked = new Set(state.seerChecks.map((c) => c.target));
+  const targets = state.players.filter(
+    (p) => p.isAlive && p.playerId !== aiPlayer.playerId && !checked.has(p.playerId),
   );
-  if (targets.length === 0) return null;
-
-  // 随机选择一个目标
-  const target = targets[Math.floor(Math.random() * targets.length)];
-
-  return {
-    type: 'seer_check',
-    playerId: aiPlayer.playerId,
-    targetId: target.playerId,
-  };
+  return pick(targets)?.playerId;
 }
 
-/** 女巫行动：决定是否使用药水 */
-function decideWitchAction(ctx: DecisionContext): GameAction | null {
-  const { aiPlayer, alivePlayers, state } = ctx;
-
-  // 如果狼人杀了人且女巫有解药，50% 概率救人
-  if (state.werewolfTarget && !state.witchAction?.type) {
-    const target = alivePlayers.find((p) => p.playerId === state.werewolfTarget);
-    if (target && Math.random() < 0.5) {
-      return {
-        type: 'witch_save',
-        playerId: aiPlayer.playerId,
-        targetId: state.werewolfTarget,
-      };
-    }
+/** 女巫：65% 救刀口，20% 毒嫌疑最高的人 */
+export function decideWitchAction(ctx: DecisionContext): 'save' | 'poison' | 'pass' {
+  const { state, aiPlayer } = ctx;
+  if (state.nightVictim && state.witchPotions.save && Math.random() < 0.65) return 'save';
+  if (state.witchPotions.poison && Math.random() < 0.2) {
+    const targets = state.players.filter((p) => p.isAlive && p.playerId !== aiPlayer.playerId);
+    if (targets.length > 0) return 'poison';
   }
-
-  // 如果女巫有毒药，20% 概率毒人
-  if (state.witchAction?.type !== 'poison' && Math.random() < 0.2) {
-    const targets = alivePlayers.filter((p) => p.playerId !== aiPlayer.playerId);
-    if (targets.length > 0) {
-      const target = targets[Math.floor(Math.random() * targets.length)];
-      return {
-        type: 'witch_poison',
-        playerId: aiPlayer.playerId,
-        targetId: target.playerId,
-      };
-    }
-  }
-
-  return null;
+  return 'pass';
 }
 
-/** 生成 AI 白天发言 */
-export function generateDaySpeech(ctx: DecisionContext): GameAction {
-  const { aiPlayer } = ctx;
-
-  const messages = generateSpeechContent(ctx);
-
-  return {
-    type: 'day_speak',
-    playerId: aiPlayer.playerId,
-    content: messages,
-  };
+export function decideWitchPoisonTarget(ctx: DecisionContext): string | undefined {
+  const { state, aiPlayer } = ctx;
+  const targets = state.players.filter((p) => p.isAlive && p.playerId !== aiPlayer.playerId);
+  const sorted = [...targets].sort((a, b) => b.suspicion - a.suspicion);
+  return (sorted[0] ?? pick(targets))?.playerId;
 }
 
-/** 生成发言内容 */
-function generateSpeechContent(ctx: DecisionContext): string {
-  const { aiPlayer, state } = ctx;
+// ===== 白天 =====
 
-  const myRole = aiPlayer.role;
-  const deadTonight = state.deadTonight;
+export function generateDaySpeech(ctx: DecisionContext): string {
+  const { state, aiPlayer } = ctx;
+  const deadCount = state.deadTonight.length;
 
-  // 根据角色生成不同风格的发言
-  if (myRole === 'werewolf') {
-    // 狼人：伪装成村民，误导其他人
+  if (aiPlayer.role === 'werewolf') {
     const templates = [
-      `大家好，我是村民。昨晚死了 ${deadTonight.length > 0 ? '人' : '没有人'}，我们要小心。`,
-      `我觉得我们应该集中票数，不要分散。`,
-      `我观察了一下，有些人发言不太对劲，大家注意一下。`,
-      `我们是村民阵营，一定要团结，把狼人找出来。`,
+      `我是个普通村民。昨晚${deadCount > 0 ? '倒下了一位同伴' : '是平安夜'}，大家要谨慎。`,
+      `我觉得票不要分散，跟着发言最有逻辑的人走。`,
+      `有人发言在避重就轻，大家留意一下。`,
+      `好人要团结，别被带节奏。`,
     ];
     return templates[Math.floor(Math.random() * templates.length)];
   }
 
-  if (myRole === 'seer') {
-    // 预言家：可能跳出来带队
-    if (state.seerResult) {
-      const target = state.players.find((p) => p.playerId === state.seerResult?.target);
+  if (aiPlayer.role === 'seer') {
+    const last = state.seerChecks[state.seerChecks.length - 1];
+    if (last && state.round >= 1) {
+      const target = state.players.find((p) => p.playerId === last.target);
       if (target) {
-        const isWolf = state.seerResult.isWerewolf;
-        if (isWolf && Math.random() < 0.6) {
-          return `我是预言家，昨晚查验了 ${target.nickname}，是狼人！大家投他！`;
-        } else if (!isWolf && Math.random() < 0.3) {
-          return `我是预言家，昨晚查验了 ${target.nickname}，是好人。`;
+        if (last.isWerewolf && Math.random() < 0.7) {
+          return `我是预言家，昨晚查验了 ${target.nickname}，查杀！建议大家投他。`;
+        }
+        if (!last.isWerewolf && Math.random() < 0.4) {
+          return `我是预言家，昨晚查验了 ${target.nickname}，是好人，可以信任。`;
         }
       }
     }
-    return `我是村民，大家听我分析。`;
+    return `我是好人，听我分析场上局势。`;
   }
 
-  if (myRole === 'witch') {
-    // 女巫：通常隐藏身份
+  if (aiPlayer.role === 'witch') {
     const templates = [
-      `我是村民，大家不要被误导了。`,
-      `我觉得我们应该先听每个人发言再决定。`,
-      `昨晚的事很蹊跷，大家小心投票。`,
+      `我身份比较普通，先听听大家的发言。`,
+      `昨晚的情况有些意外，投票前想再多听一轮。`,
+      `建议大家把怀疑的理由说清楚再投。`,
     ];
     return templates[Math.floor(Math.random() * templates.length)];
   }
 
-  if (myRole === 'hunter') {
-    // 猎人：可能暗示身份
+  if (aiPlayer.role === 'hunter') {
     const templates = [
-      `我是村民，但我有自保能力，狼人别轻易动我。`,
-      `大家听我说，我们要理性分析。`,
-      `我建议先投发言最可疑的人。`,
+      `我是好人，而且我有自保手段，狼人动手前想清楚。`,
+      `别急着投票，先把逻辑理顺。`,
+      `我建议先处理发言最可疑的人。`,
     ];
     return templates[Math.floor(Math.random() * templates.length)];
   }
 
-  // 村民
   const templates = [
-    `我是村民，大家要好好投票。`,
-    `我觉得我们要团结，不要被狼人带节奏。`,
-    `昨晚死了人，我们要找出狼人。`,
-    `大家发言要注意逻辑，狼人会露馅的。`,
-    `我支持票数最多的人出局。`,
+    `我是村民，今晚好好投一票。`,
+    `大家别慌，按发言质量来判断。`,
+    `昨晚的信息量有限，这轮要仔细听。`,
+    `狼人会伪装，注意前后矛盾的人。`,
+    `我同意集中票型的思路。`,
   ];
   return templates[Math.floor(Math.random() * templates.length)];
 }
 
-/** 生成 AI 投票 */
-export function decideVote(ctx: DecisionContext): GameAction {
-  const { aiPlayer, alivePlayers, state } = ctx;
-
-  // 可投票目标：存活且不是自己
-  const targets = alivePlayers.filter((p) => p.playerId !== aiPlayer.playerId);
-
-  if (targets.length === 0) {
-    return { type: 'vote', playerId: aiPlayer.playerId };
-  }
-
-  // 根据角色选择投票策略
-  let target: PlayerState;
+export function decideVote(ctx: DecisionContext): { targetId: string | null } {
+  const { state, aiPlayer } = ctx;
+  const targets = state.players.filter((p) => p.isAlive && p.playerId !== aiPlayer.playerId);
+  if (targets.length === 0) return { targetId: null };
 
   if (aiPlayer.role === 'werewolf') {
-    // 狼人：投非狼人玩家，优先投神职
-    const villagers = targets.filter((p) => p.role !== 'werewolf');
-    const gods = villagers.filter((p) => p.role === 'seer' || p.role === 'witch' || p.role === 'hunter');
-    const candidateTargets = gods.length > 0 ? gods : villagers;
-    target = candidateTargets[Math.floor(Math.random() * candidateTargets.length)] ?? targets[0];
-  } else if (aiPlayer.role === 'seer' && state.seerResult?.isWerewolf) {
-    // 预言家：如果查到狼人，投狼人
-    const wolf = targets.find((p) => p.playerId === state.seerResult?.target);
-    target = wolf ?? targets[Math.floor(Math.random() * targets.length)];
-  } else {
-    // 其他：随机投
-    target = targets[Math.floor(Math.random() * targets.length)];
+    // 狼人：跟票场上嫌疑最高的好人，避免投同伴
+    const nonWolves = targets.filter((p) => p.role !== 'werewolf');
+    if (nonWolves.length === 0) return { targetId: null };
+    const sorted = [...nonWolves].sort((a, b) => b.suspicion - a.suspicion);
+    return { targetId: (sorted[0] ?? pick(nonWolves)).playerId };
   }
 
-  return {
-    type: 'vote',
-    playerId: aiPlayer.playerId,
-    targetId: target.playerId,
-  };
+  if (aiPlayer.role === 'seer') {
+    // 预言家：优先投最近查杀的狼
+    const knownWolf = [...state.seerChecks]
+      .reverse()
+      .find((c) => c.isWerewolf && state.players.find((p) => p.playerId === c.target)?.isAlive);
+    if (knownWolf) return { targetId: knownWolf.target };
+  }
+
+  // 好人：按嫌疑投票，零嫌疑时小概率弃票
+  const sorted = [...targets].sort((a, b) => b.suspicion - a.suspicion);
+  if (sorted[0] && sorted[0].suspicion > 0) return { targetId: sorted[0].playerId };
+  if (Math.random() < 0.1) return { targetId: null };
+  return { targetId: (sorted[0] ?? pick(targets)).playerId };
+}
+
+/** 猎人开枪：AI 优先带走跳过预言家查杀的人，否则不开枪 */
+export function decideHunterShoot(ctx: DecisionContext): string | undefined {
+  const { state } = ctx;
+  const targets = state.players.filter((p) => p.isAlive);
+  const claimed = claimedSeer(state);
+  if (claimed && Math.random() < 0.5) return claimed.playerId;
+  const anyTarget = pick(targets);
+  return anyTarget && Math.random() < 0.6 ? anyTarget.playerId : undefined;
 }

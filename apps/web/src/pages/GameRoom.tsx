@@ -1,9 +1,15 @@
-import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { Play, UserPlus } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { ArrowLeft, Bot, Play, Plus, UserMinus, UserPlus, Wifi, WifiOff } from 'lucide-react';
 import { api } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
+import { useGameRoomSocket } from '../hooks/useGameRoomSocket';
 import { Shell, Top, Notice } from '../components/Shell';
+import { WerewolfView } from '../components/WerewolfView';
 import { ThiefGameView } from '../components/ThiefGameView';
+import { MysteryView } from '../components/MysteryView';
+import { UndercoverView } from '../components/UndercoverView';
+import { PlayerChips, WinnerBanner, type GameViewState } from '../components/game-parts';
 
 interface GamePlayer {
   id: string;
@@ -12,7 +18,6 @@ interface GamePlayer {
   nickname: string;
   role: 'human' | 'ai';
   isAlive: boolean;
-  gameData: Record<string, unknown> | null;
   user?: { id: string; displayName: string; avatarColor: string | null };
   profile?: { id: string; name: string; avatarColor: string | null };
 }
@@ -24,15 +29,23 @@ interface GameRoomDetail {
   gameStatus: string;
   minPlayers: number | null;
   maxPlayers: number | null;
-  gameState: Record<string, unknown> | null;
   owner: { id: string; displayName: string };
   gamePlayers: GamePlayer[];
+}
+
+interface GameStateResponse {
+  gameStatus: string;
+  gameType: string;
+  myPlayerId: string | null;
+  deadline: number | null;
+  view: GameViewState | null;
 }
 
 const GAME_LABELS: Record<string, string> = {
   werewolf: '狼人杀',
   murder_mystery: '剧本杀',
   who_is_the_thief: '谁是凶手',
+  who_is_undercover: '谁是卧底',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -42,24 +55,93 @@ const STATUS_LABELS: Record<string, string> = {
   finished: '已结束',
 };
 
+const WINNER_TEXT: Record<string, Record<string, string>> = {
+  werewolf: { werewolf: '狼人阵营获胜！', villager: '好人阵营获胜！' },
+  who_is_the_thief: { thief: '小偷阵营获胜！', citizen: '市民阵营获胜！' },
+  murder_mystery: { murderer: '凶手获胜！', detectives: '侦探们获胜！' },
+  who_is_undercover: { undercover: '卧底获胜！', civilians: '平民获胜！' },
+};
+
 export default function GameRoom() {
   const { id = '' } = useParams();
+  const { user } = useAuth();
   const [room, setRoom] = useState<GameRoomDetail | null>(null);
+  const [state, setState] = useState<GameStateResponse | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const reloadSeq = useRef(0);
 
-  const reload = async () => {
+  const reload = useCallback(async () => {
+    const seq = ++reloadSeq.current;
     try {
-      const data = await api<GameRoomDetail>('GET', `/entertainment/rooms/${id}`);
-      setRoom(data);
+      const [roomData, stateData] = await Promise.all([
+        api<GameRoomDetail>('GET', `/entertainment/rooms/${id}`),
+        api<GameStateResponse>('GET', `/entertainment/rooms/${id}/state`).catch(() => null),
+      ]);
+      if (seq !== reloadSeq.current) return; // 过期响应，丢弃
+      setRoom(roomData);
+      setState(stateData);
+      setProblem(null);
     } catch (e: unknown) {
+      if (seq !== reloadSeq.current) return;
       setProblem(e instanceof Error ? e.message : '加载失败');
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     void reload();
-  }, [id]);
+  }, [reload]);
+
+  // WS 实时：任何 game_* 事件触发整页刷新
+  const { connected } = useGameRoomSocket(id, () => void reload());
+
+  // 轮询兜底：断线或等待中每 5s 刷一次
+  useEffect(() => {
+    if (connected) return;
+    if (room?.gameStatus !== 'playing' && room?.gameStatus !== 'ready' && room?.gameStatus !== 'waiting') return;
+    const timer = window.setInterval(() => void reload(), 5000);
+    return () => window.clearInterval(timer);
+  }, [connected, room?.gameStatus, reload]);
+
+  const isOwner = user?.id === room?.owner.id;
+  const myPlayer = useMemo(
+    () => room?.gamePlayers.find((p) => p.userId === user?.id) ?? null,
+    [room, user],
+  );
+  const playing = room?.gameStatus === 'playing';
+  const finished = room?.gameStatus === 'finished';
+  const canStart = room?.gameStatus === 'waiting' || room?.gameStatus === 'ready';
+
+  const run = async (fn: () => Promise<unknown>, failText: string) => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      await fn();
+      await reload();
+    } catch (e: unknown) {
+      setProblem(e instanceof Error ? e.message : failText);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const act = useCallback(
+    async (type: string, extra?: { targetId?: string; content?: string }) => {
+      try {
+        const result = await api<{ view: GameViewState; deadline: number | null }>(
+          'POST',
+          `/entertainment/rooms/${id}/action`,
+          { type, ...extra },
+        );
+        setState((prev) => (prev ? { ...prev, view: result.view, deadline: result.deadline } : prev));
+        // 广播只发给其他人，本地立即再拉一次房间详情（生死/阶段变化）
+        void reload();
+      } catch (e: unknown) {
+        setProblem(e instanceof Error ? e.message : '操作失败');
+      }
+    },
+    [id, reload],
+  );
 
   if (!room) {
     return (
@@ -72,91 +154,26 @@ export default function GameRoom() {
     );
   }
 
-  const isOwner = true; // TODO: 从 auth context 判断
-  const canStart = room.gameStatus === 'waiting' || room.gameStatus === 'ready';
-  const playing = room.gameStatus === 'playing';
-
-  const handleStart = async () => {
-    setBusy(true);
-    setProblem(null);
-    try {
-      await api('POST', `/entertainment/rooms/${id}/start`, {});
-      await reload();
-    } catch (e: unknown) {
-      setProblem(e instanceof Error ? e.message : '开局失败');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleJoin = async () => {
-    setBusy(true);
-    setProblem(null);
-    try {
-      await api('POST', `/entertainment/rooms/${id}/join`, {});
-      await reload();
-    } catch (e: unknown) {
-      setProblem(e instanceof Error ? e.message : '加入失败');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleFillWithAi = async () => {
-    setBusy(true);
-    setProblem(null);
-    try {
-      const missing = (room?.minPlayers ?? 4) - room.gamePlayers.length;
-      for (let i = 0; i < missing; i++) {
-        await api('POST', `/entertainment/rooms/${id}/ai`, {
-          nickname: `AI 玩家 ${room.gamePlayers.length + i + 1}`,
-        });
-      }
-      await reload();
-    } catch (e: unknown) {
-      setProblem(e instanceof Error ? e.message : '添加 AI 失败');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleGameAction = async (type: string, targetId?: string) => {
-    setBusy(true);
-    setProblem(null);
-    try {
-      await api('POST', `/entertainment/rooms/${id}/action`, { type, targetId });
-      await reload();
-    } catch (e: unknown) {
-      setProblem(e instanceof Error ? e.message : '操作失败');
-    } finally {
-      setBusy(false);
-    }
-  };
+  const view = state?.view ?? null;
+  const gameLabel = GAME_LABELS[room.gameType] ?? room.gameType;
+  const iAmAlive = view ? (view.players.find((p) => p.playerId === state?.myPlayerId)?.isAlive ?? false) : false;
 
   return (
     <Shell>
       <Top
         title={room.title}
-        sub={`${GAME_LABELS[room.gameType] ?? room.gameType} · ${STATUS_LABELS[room.gameStatus] ?? room.gameStatus}`}
+        sub={`${gameLabel} · ${STATUS_LABELS[room.gameStatus] ?? room.gameStatus}`}
         action={
-          <div style={{ display: 'flex', gap: 8 }}>
-            {canStart && isOwner && (
-              <button className="primary" onClick={handleStart} disabled={busy}>
-                <Play />
-                开始游戏
-              </button>
-            )}
-            {room.gameStatus === 'waiting' && isOwner && room.gamePlayers.length < (room.minPlayers ?? 4) && (
-              <button className="secondary" onClick={handleFillWithAi} disabled={busy}>
-                <UserPlus />
-                添加 AI 凑人数
-              </button>
-            )}
-            {room.gameStatus === 'waiting' && (
-              <button className="secondary" onClick={handleJoin} disabled={busy}>
-                <UserPlus />
-                加入游戏
-              </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {playing && (connected ? <Wifi size={16} className="conn-ok" /> : <WifiOff size={16} className="conn-bad" />)}
+            <Link to="/entertainment" className="secondary">
+              <ArrowLeft />
+              返回大厅
+            </Link>
+            {finished && (
+              <Link to={`/entertainment/${id}/review`} className="secondary">
+                查看复盘
+              </Link>
             )}
           </div>
         }
@@ -164,112 +181,196 @@ export default function GameRoom() {
       <div className="content">
         {problem && <Notice kind="error">{problem}</Notice>}
 
-        <div className="review" style={{ gridTemplateColumns: '1fr' }}>
-          <div className="score">
-            <strong>{room.gamePlayers.length}</strong>
-            <span>/{room.maxPlayers ?? '∞'} 玩家</span>
-          </div>
-          <div className="member-section">
-            <div className="panelhead">
-              <span>玩家列表</span>
-              <b>{room.gamePlayers.length}</b>
-            </div>
-            {room.gamePlayers.map((p) => {
-              const isOwner = p.userId === room.owner.id;
-              const gameRole = p.gameData ? (p.gameData as { gameRole?: string }).gameRole : undefined;
-              const gameRoleLabels: Record<string, string> = {
-                werewolf: '狼人',
-                villager: '村民',
-                seer: '预言家',
-                witch: '女巫',
-                hunter: '猎人',
-              };
-              return (
-                <div className="agent" key={p.id}>
-                  <span
-                    className="avatar"
-                    style={{ background: p.profile?.avatarColor ?? p.user?.avatarColor ?? '#6f52d9' }}
-                  >
-                    {p.nickname.slice(0, 1)}
-                  </span>
-                  <div>
-                    <b>
-                      {p.nickname}
-                      {p.role === 'ai' && <span className="id-badge ai">AI</span>}
-                      {isOwner && <span className="id-badge owner">房主</span>}
-                    </b>
-                    <small>
-                      {p.isAlive ? '存活' : '已出局'}
-                      {gameRole && gameRoleLabels[gameRole] && (
-                        <span className={`id-badge game-role ${gameRole}`}>{gameRoleLabels[gameRole]}</span>
-                      )}
-                    </small>
-                  </div>
+        {/* ===== 等待阶段 ===== */}
+        {(canStart || (!playing && !finished)) && (
+          <>
+            <div className="formcard">
+              <h2>房间准备</h2>
+              <p className="hint">
+                {gameLabel} · {room.gamePlayers.length}/{room.maxPlayers ?? '∞'} 人
+                {room.minPlayers ? `（至少 ${room.minPlayers} 人开局）` : ''}
+              </p>
+              <div className="member-section">
+                <div className="panelhead">
+                  <span>玩家列表</span>
+                  <b>{room.gamePlayers.length}</b>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {playing && room.gameType === 'who_is_the_thief' && room.gameState && (
-          <ThiefGameView
-            phase={(room.gameState as { phase?: string }).phase ?? 'night'}
-            round={(room.gameState as { round?: number }).round ?? 1}
-            players={((room.gameState as { players?: unknown[] }).players ?? []).map((p: unknown) => {
-              const sp = p as Record<string, unknown>;
-              return {
-                playerId: sp.playerId as string,
-                nickname: sp.nickname as string,
-                role: (sp.role as 'human' | 'ai') ?? 'human',
-                isAlive: sp.isAlive as boolean ?? true,
-              };
-            })}
-            clues={((room.gameState as { clues?: unknown[] }).clues ?? []).map((c: unknown) => {
-              const cl = c as Record<string, unknown>;
-              return {
-                id: cl.id as string,
-                name: cl.name as string,
-                description: cl.description as string,
-                location: cl.location as string,
-                revealsInfo: cl.revealsInfo as string,
-                isKey: cl.isKey as boolean ?? false,
-                discoveredBy: cl.discoveredBy as string | undefined,
-              };
-            })}
-            discoveredClues={(room.gameState as { discoveredClues?: string[] }).discoveredClues ?? []}
-            events={((room.gameState as { events?: unknown[] }).events ?? []).map((e: unknown) => {
-              const ev = e as Record<string, unknown>;
-              return {
-                id: ev.id as string,
-                round: ev.round as number,
-                phase: ev.phase as string,
-                type: ev.type as string,
-                actorName: ev.actorName as string | undefined,
-                targetName: ev.targetName as string | undefined,
-                content: ev.content as string,
-                timestamp: ev.timestamp as number,
-              };
-            })}
-            votes={(room.gameState as { votes?: Record<string, string> }).votes ?? {}}
-            myRole={(() => {
-              const found = ((room.gameState as { players?: unknown[] }).players ?? []).find(
-                (p: unknown) => (p as Record<string, unknown>).playerId === room.gamePlayers.find((gp) => gp.userId === room.owner.id)?.id,
-              ) as Record<string, unknown> | undefined;
-              return found?.role as string | undefined;
-            })()}
-            isOwner={isOwner}
-            canAct={room.gameStatus === 'playing'}
-            onSearch={() => void handleGameAction('search')}
-            onVote={(targetId) => void handleGameAction('vote', targetId)}
-          />
+                {room.gamePlayers.map((p) => {
+                  const owner = p.userId === room.owner.id;
+                  return (
+                    <div className="agent" key={p.id}>
+                      <span
+                        className="avatar"
+                        style={{ background: p.profile?.avatarColor ?? p.user?.avatarColor ?? (p.role === 'ai' ? '#6f52d9' : '#2871c9') }}
+                      >
+                        {p.nickname.slice(0, 1)}
+                      </span>
+                      <div>
+                        <b>
+                          {p.nickname}
+                          {p.role === 'ai' && <span className="id-badge ai">AI</span>}
+                          {owner && <span className="id-badge owner">房主</span>}
+                        </b>
+                        <small>{p.role === 'ai' ? 'AI 玩家' : '人类玩家'}</small>
+                      </div>
+                      {isOwner && p.role === 'ai' && (
+                        <button
+                          className="link-danger"
+                          disabled={busy}
+                          onClick={() => void run(() => api('DELETE', `/entertainment/rooms/${id}/ai/${p.id}`), '移除失败')}
+                        >
+                          <UserMinus size={14} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="actions">
+                {canStart && isOwner && (
+                  <>
+                    <button
+                      className="primary"
+                      disabled={busy || (room.minPlayers ? room.gamePlayers.length < room.minPlayers : false)}
+                      onClick={() => void run(() => api('POST', `/entertainment/rooms/${id}/start`, {}), '开局失败')}
+                    >
+                      <Play />
+                      开始游戏
+                    </button>
+                    <button
+                      className="secondary"
+                      disabled={busy || (room.maxPlayers ? room.gamePlayers.length >= room.maxPlayers : false)}
+                      onClick={() =>
+                        void run(
+                          () =>
+                            api('POST', `/entertainment/rooms/${id}/ai`, {
+                              nickname: `AI 玩家 ${room.gamePlayers.filter((p) => p.role === 'ai').length + 1}`,
+                            }),
+                          '添加 AI 失败',
+                        )
+                      }
+                    >
+                      <Bot />
+                      添加 AI
+                    </button>
+                  </>
+                )}
+                {canStart && !myPlayer && (
+                  <button
+                    className="primary"
+                    disabled={busy || (room.maxPlayers ? room.gamePlayers.length >= room.maxPlayers : false)}
+                    onClick={() => void run(() => api('POST', `/entertainment/rooms/${id}/join`, {}), '加入失败')}
+                  >
+                    <UserPlus />
+                    加入游戏
+                  </button>
+                )}
+                {canStart && myPlayer && !isOwner && (
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => void run(() => api('POST', `/entertainment/rooms/${id}/leave`, {}), '离开失败')}
+                  >
+                    <UserMinus />
+                    离开房间
+                  </button>
+                )}
+                {canStart && isOwner && room.gamePlayers.length < (room.minPlayers ?? 4) && (
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        const missing = (room.minPlayers ?? 4) - room.gamePlayers.length;
+                        for (let i = 0; i < missing; i++) {
+                          await api('POST', `/entertainment/rooms/${id}/ai`, {
+                            nickname: `AI 玩家 ${room.gamePlayers.filter((p) => p.role === 'ai').length + i + 1}`,
+                          });
+                        }
+                      }, '添加 AI 失败')
+                    }
+                  >
+                    <Plus />
+                    AI 凑满开局人数
+                  </button>
+                )}
+              </div>
+              {canStart && isOwner && room.minPlayers && room.gamePlayers.length < room.minPlayers && (
+                <Notice kind="info">
+                  还差 {room.minPlayers - room.gamePlayers.length} 人达到最低开局人数，可以邀请好友或用 AI 补位。
+                </Notice>
+              )}
+            </div>
+          </>
         )}
 
-        {playing && room.gameType !== 'who_is_the_thief' && (
-          <div className="formcard">
-            <h2>游戏进行中</h2>
-            <p>游戏已开始，请等待游戏事件推送...</p>
-            <pre className="game-state">{JSON.stringify(room.gameState, null, 2)}</pre>
-          </div>
+        {/* ===== 游戏进行中 / 已结束 ===== */}
+        {(playing || finished) && (
+          <>
+            {!view && playing && <Notice kind="info">正在同步游戏状态...</Notice>}
+            {view && room.gameType === 'werewolf' && (
+              <WerewolfView
+                view={view}
+                myPlayerId={state?.myPlayerId ?? null}
+                alive={iAmAlive}
+                deadline={state?.deadline ?? null}
+                act={act}
+                refresh={() => void reload()}
+              />
+            )}
+            {view && room.gameType === 'who_is_the_thief' && (
+              <ThiefGameView
+                view={view}
+                myPlayerId={state?.myPlayerId ?? null}
+                alive={iAmAlive}
+                deadline={state?.deadline ?? null}
+                act={act}
+                refresh={() => void reload()}
+              />
+            )}
+            {view && room.gameType === 'murder_mystery' && (
+              <MysteryView
+                view={view}
+                myPlayerId={state?.myPlayerId ?? null}
+                alive={iAmAlive}
+                deadline={state?.deadline ?? null}
+                act={act}
+                refresh={() => void reload()}
+              />
+            )}
+            {view && room.gameType === 'who_is_undercover' && (
+              <UndercoverView
+                view={view}
+                myPlayerId={state?.myPlayerId ?? null}
+                alive={iAmAlive}
+                deadline={state?.deadline ?? null}
+                act={act}
+                refresh={() => void reload()}
+              />
+            )}
+            {finished && view && (
+              <div className="game-section">
+                <h4>最终身份</h4>
+                <PlayerChips players={view.players ?? []} showRoles />
+              </div>
+            )}
+            {finished && !view && room.gamePlayers.length > 0 && (
+              <WinnerBanner
+                text={WINNER_TEXT[room.gameType]?.[''] ?? '本局已结束'}
+                tone="neutral"
+              />
+            )}
+            {finished && (
+              <div className="actions" style={{ marginTop: 16 }}>
+                <Link to={`/entertainment/${id}/review`} className="primary">
+                  查看完整复盘
+                </Link>
+                <Link to="/entertainment" className="secondary">
+                  返回大厅
+                </Link>
+              </div>
+            )}
+          </>
         )}
       </div>
     </Shell>
