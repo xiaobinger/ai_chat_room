@@ -148,3 +148,27 @@ cite,.cite-list{display:block}
 .final-player .dead{color:#ff9b91}
 .death-info{margin-top:16px;padding:12px;background:#271a1c;border:1px solid #61393f;border-radius:8px}
 .death-info p{margin:4px 0;font-size:12px;color:#ff9b91}
+
+/* 游戏复盘 */
+.review-overview{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
+.overview-card{display:flex;align-items:center;gap:12px;padding:16px;background:#0b0c11;border:1px solid #252630;border-radius:12px}
+.overview-card svg{width:24px;height:24px;color:#ad9eff}
+.overview-card span{display:block;font-size:10px;color:#777}
+.overview-card b{font-size:18px}
+.review-section{margin-bottom:24px}
+.review-section h3{margin:0 0 16px;font-size:16px}
+.player-roles{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.player-role-card{display:flex;align-items:center;gap:10px;padding:12px;background:#0b0c11;border:1px solid #252630;border-radius:10px}
+.player-role-card b{font-size:12px}
+.player-role-card small{font-size:9px;color:#777}
+.event-timeline{position:relative;padding-left:24px}
+.event-timeline::before{content:'';position:absolute;left:8px;top:0;bottom:0;width:2px;background:#252630}
+.event-item{position:relative;margin-bottom:16px}
+.event-marker{position:absolute;left:-20px;top:6px;width:10px;height:10px;border-radius:50%;border:2px solid #0b0c11}
+.event-content{background:#0b0c11;border:1px solid #252630;border-radius:8px;padding:12px}
+.event-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.event-type{font-size:10px;font-weight:700}
+.event-round{font-size:9px;color:#777}
+.event-text{margin:0;font-size:12px;color:#d4d4dc;line-height:1.5}
+.event-item.game_end .event-content{border-color:#ff758c;background:#1a0f10}
+.event_item.player_death .event-content{border-color:#61393f;background:#150f0f}

@@ -53,6 +53,16 @@ export function initGameState(
     votes: {},
     deadTonight: [],
     deadToday: [],
+    events: [
+      {
+        id: crypto.randomUUID(),
+        round: 1,
+        phase: 'night',
+        type: 'game_start',
+        content: `游戏开始！共 ${players.length} 名玩家。`,
+        timestamp: Date.now(),
+      },
+    ],
   };
 }
 

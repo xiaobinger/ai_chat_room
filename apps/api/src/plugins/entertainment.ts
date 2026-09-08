@@ -279,6 +279,44 @@ export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
     return room;
   });
 
+  /** 获取游戏复盘数据 */
+  fastify.get('/rooms/:roomId/review', async (request) => {
+    const { roomId } = request.params as { roomId: string };
+    const room = await prisma.room.findFirst({
+      where: { id: roomId, type: 'entertainment' },
+      include: {
+        gamePlayers: {
+          include: {
+            user: { select: { id: true, displayName: true } },
+            profile: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+    if (!room) throw new NotFound('room_not_found');
+
+    const gameState = room.gameState as Record<string, unknown> | null;
+    return {
+      room: {
+        id: room.id,
+        title: room.title,
+        gameType: room.gameType,
+        gameStatus: room.gameStatus,
+        createdAt: room.createdAt,
+      },
+      players: room.gamePlayers.map((p) => ({
+        id: p.id,
+        nickname: p.nickname,
+        role: p.role,
+        userId: p.userId,
+        profileId: p.profileId,
+      })),
+      events: gameState?.events ?? [],
+      winner: gameState?.winner,
+      gameState,
+    };
+  });
+
   /** 游戏动作（投票、发言等） */
   fastify.post('/rooms/:roomId/action', async (request, reply) => {
     const { roomId } = request.params as { roomId: string };

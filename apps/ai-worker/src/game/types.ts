@@ -9,23 +9,38 @@ export interface PlayerState {
   nickname: string;
   role: WerewolfRole;
   isAlive: boolean;
-  isProtected?: boolean; // 女巫解药保护
+  isProtected?: boolean;
+}
+
+export interface GameLogEntry {
+  id: string;
+  round: number;
+  phase: GamePhase;
+  type: 'phase_change' | 'player_action' | 'player_death' | 'vote_result' | 'game_start' | 'game_end';
+  actorId?: string;
+  actorName?: string;
+  targetId?: string;
+  targetName?: string;
+  content: string;
+  timestamp: number;
+  role?: WerewolfRole;
 }
 
 export interface GameState {
   phase: GamePhase;
   round: number;
   players: PlayerState[];
-  werewolfTarget?: string; // 狼人夜晚目标
-  seerTarget?: string; // 预言家查验目标
+  werewolfTarget?: string;
+  seerTarget?: string;
   seerResult?: { target: string; isWerewolf: boolean };
   witchAction?: { type: 'save' | 'poison'; target?: string };
   dayMessages: DayMessage[];
-  votes: Record<string, string>; // voterId -> targetId
+  votes: Record<string, string>;
   deadTonight: string[];
   deadToday: string[];
   winner?: 'werewolf' | 'villager';
-  hunterCanShoot?: boolean; // 猎人是否可以开枪
+  hunterCanShoot?: boolean;
+  events: GameLogEntry[];
 }
 
 export interface DayMessage {
