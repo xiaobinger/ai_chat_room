@@ -213,3 +213,57 @@ cite,.cite-list{display:block}
 .mention-badge{font-size:9px;padding:2px 6px;border-radius:4px;font-weight:700}
 .mention-badge.ai{background:#7457ff;color:#fff}
 .mention-real{font-size:10px;color:#777;margin-left:auto}
+
+/* 谁是凶手游戏 */
+.thief-game{display:grid;gap:20px}
+.game-header{display:flex;align-items:center;gap:16px;padding:16px;background:linear-gradient(135deg,#1a1520,#0d0e13);border:1px solid #2e2943;border-radius:12px}
+.phase-badge{display:flex;align-items:center;gap:8px;padding:8px 16px;background:#7457ff;border-radius:8px;font-weight:700}
+.phase-badge svg{color:#fff}
+.phase-badge small{color:rgba(255,255,255,.7);font-weight:400}
+.phase-desc{margin:0;color:#8e90a0;flex:1}
+.my-role-badge{padding:6px 12px;background:#2a2440;border-radius:6px;font-size:12px}
+.role-thief,.role-master_thief{color:#ff9b91}
+.role-detective{color:#5ee9a3}
+.role-citizen{color:#ad9eff}
+.narrative,.clues-section,.players-section,.actions-section{background:#0b0c11;border:1px solid #252630;border-radius:12px;padding:16px}
+.narrative h3,.clues-section h3,.players-section h3,.actions-section h3{display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:14px;color:#ececf2}
+.timeline{position:relative;padding-left:20px}
+.timeline::before{content:'';position:absolute;left:6px;top:0;bottom:0;width:2px;background:#252630}
+.timeline-item{position:relative;margin-bottom:12px}
+.timeline-item:last-child{margin-bottom:0}
+.timeline-dot{position:absolute;left:-17px;top:6px;width:8px;height:8px;border-radius:50%;background:#7457ff;border:2px solid #0b0c11}
+.timeline-content p{margin:0;font-size:12px;color:#d4d4dc;line-height:1.5}
+.timeline-content small{color:#777;font-size:9px}
+.timeline-item.player_death .timeline-dot{background:#ff9b91}
+.timeline-item.clue_discovered .timeline-dot{background:#5ee9a3}
+.timeline-item.vote_result .timeline-dot{background:#ffbd75}
+.clue-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.clue-card{background:#13141a;border:1px solid #2e2943;border-radius:10px;padding:12px;transition:transform .2s}
+.clue-card:hover{transform:translateY(-2px)}
+.clue-card.key{border-color:#ffbd75;background:#1a1510}
+.clue-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.clue-name{font-size:12px;font-weight:700;color:#ececf2}
+.clue-key-badge{font-size:9px;padding:2px 6px;background:#ffbd75;color:#000;border-radius:4px;font-weight:700}
+.clue-desc{font-size:11px;color:#8e90a0;margin:0 0 8px}
+.clue-reveals{font-size:11px;color:#5ee9a3;margin:0 0 8px}
+.clue-location{font-size:9px;color:#777}
+.player-chips{display:flex;flex-wrap:wrap;gap:8px}
+.player-chip{display:flex;align-items:center;gap:6px;padding:6px 10px;background:#13141a;border:1px solid #252630;border-radius:8px}
+.player-chip.dead{opacity:.5;text-decoration:line-through}
+.player-avatar{width:24px;height:24px;display:grid;place-items:center;border-radius:6px;font-weight:800;color:#fff;font-size:10px;flex:0 0 auto}
+.player-avatar.small{width:20px;height:20px;font-size:9px}
+.player-name{font-size:11px;color:#ececf2}
+.ai-mini{font-size:8px;padding:1px 4px;background:#6f52d9;color:#fff;border-radius:3px}
+.dead-badge{font-size:8px;padding:1px 4px;background:#ff9b91;color:#000;border-radius:3px}
+.action-btn{display:flex;align-items:center;gap:8px;padding:12px 20px;border:0;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}
+.action-btn.primary{background:#7457ff;color:#fff}
+.action-btn.secondary{background:#20212a;color:#d6d7df;border:1px solid #30313b}
+.vote-section{margin-top:12px}
+.vote-options{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.vote-btn{display:flex;align-items:center;gap:8px;padding:8px 16px;background:#13141a;border:1px solid #252630;border-radius:8px;cursor:pointer;font-size:12px;color:#ececf2;transition:all .2s}
+.vote-btn:hover{border-color:#7457ff}
+.vote-btn.voted{background:#7457ff;border-color:#7457ff;color:#fff}
+.vote-results{margin-top:16px;padding-top:16px;border-top:1px solid #252630}
+.vote-results h4{margin:0 0 12px;font-size:12px;color:#8e90a0}
+.vote-count{display:flex;justify-content:space-between;padding:6px 0;font-size:12px}
+.vote-count b{color:#ffbd75}

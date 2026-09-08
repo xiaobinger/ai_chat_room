@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { Play, UserPlus } from 'lucide-react';
 import { api } from '../lib/api';
 import { Shell, Top, Notice } from '../components/Shell';
+import { ThiefGameView } from '../components/ThiefGameView';
 
 interface GamePlayer {
   id: string;
@@ -119,6 +120,19 @@ export default function GameRoom() {
     }
   };
 
+  const handleGameAction = async (type: string, targetId?: string) => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      await api('POST', `/entertainment/rooms/${id}/action`, { type, targetId });
+      await reload();
+    } catch (e: unknown) {
+      setProblem(e instanceof Error ? e.message : '操作失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Shell>
       <Top
@@ -197,7 +211,57 @@ export default function GameRoom() {
           </div>
         </div>
 
-        {playing && (
+        {playing && room.gameType === 'who_is_the_thief' && room.gameState && (
+          <ThiefGameView
+            phase={(room.gameState as { phase?: string }).phase ?? 'night'}
+            round={(room.gameState as { round?: number }).round ?? 1}
+            players={((room.gameState as { players?: unknown[] }).players ?? []).map((p: unknown) => {
+              const sp = p as Record<string, unknown>;
+              return {
+                playerId: sp.playerId as string,
+                nickname: sp.nickname as string,
+                role: (sp.role as 'human' | 'ai') ?? 'human',
+                isAlive: sp.isAlive as boolean ?? true,
+              };
+            })}
+            clues={((room.gameState as { clues?: unknown[] }).clues ?? []).map((c: unknown) => {
+              const cl = c as Record<string, unknown>;
+              return {
+                id: cl.id as string,
+                name: cl.name as string,
+                description: cl.description as string,
+                location: cl.location as string,
+                revealsInfo: cl.revealsInfo as string,
+                isKey: cl.isKey as boolean ?? false,
+                discoveredBy: cl.discoveredBy as string | undefined,
+              };
+            })}
+            discoveredClues={(room.gameState as { discoveredClues?: string[] }).discoveredClues ?? []}
+            events={((room.gameState as { events?: unknown[] }).events ?? []).map((e: unknown) => {
+              const ev = e as Record<string, unknown>;
+              return {
+                id: ev.id as string,
+                round: ev.round as number,
+                phase: ev.phase as string,
+                type: ev.type as string,
+                actorName: ev.actorName as string | undefined,
+                targetName: ev.targetName as string | undefined,
+                content: ev.content as string,
+                timestamp: ev.timestamp as number,
+              };
+            })}
+            votes={(room.gameState as { votes?: Record<string, string> }).votes ?? {}}
+            myRole={((room.gameState as { players?: unknown[] }).players ?? []).find(
+              (p: unknown) => (p as Record<string, unknown>).playerId === room.gamePlayers.find((gp) => gp.userId === room.owner.id)?.id,
+            ) as unknown as string | undefined}
+            isOwner={isOwner}
+            canAct={room.gameStatus === 'playing'}
+            onSearch={() => void handleGameAction('search')}
+            onVote={(targetId) => void handleGameAction('vote', targetId)}
+          />
+        )}
+
+        {playing && room.gameType !== 'who_is_the_thief' && (
           <div className="formcard">
             <h2>游戏进行中</h2>
             <p>游戏已开始，请等待游戏事件推送...</p>
