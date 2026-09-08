@@ -101,6 +101,24 @@ export default function GameRoom() {
     }
   };
 
+  const handleFillWithAi = async () => {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const missing = (room?.minPlayers ?? 4) - room.gamePlayers.length;
+      for (let i = 0; i < missing; i++) {
+        await api('POST', `/entertainment/rooms/${id}/ai`, {
+          nickname: `AI 玩家 ${room.gamePlayers.length + i + 1}`,
+        });
+      }
+      await reload();
+    } catch (e: unknown) {
+      setProblem(e instanceof Error ? e.message : '添加 AI 失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Shell>
       <Top
@@ -112,6 +130,12 @@ export default function GameRoom() {
               <button className="primary" onClick={handleStart} disabled={busy}>
                 <Play />
                 开始游戏
+              </button>
+            )}
+            {room.gameStatus === 'waiting' && isOwner && room.gamePlayers.length < (room.minPlayers ?? 4) && (
+              <button className="secondary" onClick={handleFillWithAi} disabled={busy}>
+                <UserPlus />
+                添加 AI 凑人数
               </button>
             )}
             {room.gameStatus === 'waiting' && (

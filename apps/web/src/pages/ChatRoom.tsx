@@ -538,14 +538,6 @@ export default function ChatRoom() {
             </button>
           )}
           <div className="input-wrap">
-            <button
-              className="emoji-btn"
-              onClick={() => setEmojiOpen(!emojiOpen)}
-              type="button"
-              title="表情"
-            >
-              😊
-            </button>
             <input
               ref={inputRef}
               value={draft}
@@ -564,6 +556,14 @@ export default function ChatRoom() {
                 }, 150);
               }}
             />
+            <button
+              className="emoji-btn"
+              onClick={() => setEmojiOpen(!emojiOpen)}
+              type="button"
+              title="表情"
+            >
+              😊
+            </button>
             {emojiOpen && (
               <EmojiPicker
                 onSelect={handleEmojiSelect}
