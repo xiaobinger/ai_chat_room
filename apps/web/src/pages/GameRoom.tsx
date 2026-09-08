@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Bot, Play, Plus, UserMinus, UserPlus, Wifi, WifiOff } from 'lucide-react';
+import { ArrowLeft, Bot, Play, Plus, RotateCcw, Trash2, UserMinus, UserPlus, Wifi, WifiOff } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useGameRoomSocket } from '../hooks/useGameRoomSocket';
@@ -222,6 +222,15 @@ export default function GameRoom() {
                           <UserMinus size={14} />
                         </button>
                       )}
+                      {isOwner && p.role === 'human' && !owner && (
+                        <button
+                          className="link-danger"
+                          disabled={busy}
+                          onClick={() => void run(() => api('DELETE', `/entertainment/rooms/${id}/players/${p.id}`), '踢出失败')}
+                        >
+                          <UserMinus size={14} />
+                        </button>
+                      )}
                     </div>
                   );
                 })}
@@ -294,6 +303,23 @@ export default function GameRoom() {
                     AI 凑满开局人数
                   </button>
                 )}
+                {canStart && isOwner && (
+                  <button
+                    className="link-danger"
+                    disabled={busy}
+                    onClick={() => {
+                      if (window.confirm('确定解散房间？解散后所有数据将被清除，无法恢复。')) {
+                        void run(async () => {
+                          await api('DELETE', `/entertainment/rooms/${id}`);
+                          window.location.href = '/entertainment';
+                        }, '解散失败');
+                      }
+                    }}
+                  >
+                    <Trash2 />
+                    解散房间
+                  </button>
+                )}
               </div>
               {canStart && isOwner && room.minPlayers && room.gamePlayers.length < room.minPlayers && (
                 <Notice kind="info">
@@ -362,7 +388,34 @@ export default function GameRoom() {
             )}
             {finished && (
               <div className="actions" style={{ marginTop: 16 }}>
-                <Link to={`/entertainment/${id}/review`} className="primary">
+                {isOwner && (
+                  <>
+                    <button
+                      className="primary"
+                      disabled={busy}
+                      onClick={() => void run(() => api('POST', `/entertainment/rooms/${id}/restart`, {}), '重开失败')}
+                    >
+                      <RotateCcw />
+                      再来一局
+                    </button>
+                    <button
+                      className="link-danger"
+                      disabled={busy}
+                      onClick={() => {
+                        if (window.confirm('确定解散房间？解散后所有数据将被清除，无法恢复。')) {
+                          void run(async () => {
+                            await api('DELETE', `/entertainment/rooms/${id}`);
+                            window.location.href = '/entertainment';
+                          }, '解散失败');
+                        }
+                      }}
+                    >
+                      <Trash2 />
+                      解散房间
+                    </button>
+                  </>
+                )}
+                <Link to={`/entertainment/${id}/review`} className="secondary">
                   查看完整复盘
                 </Link>
                 <Link to="/entertainment" className="secondary">

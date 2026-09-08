@@ -7,6 +7,9 @@ import type {
 } from './mystery-types';
 import { MYSTERY_SCENARIOS, CHARACTER_POOL, CLUE_POOL } from './mystery-types';
 
+const pick = <T>(list: T[]): T | undefined =>
+  list.length > 0 ? list[Math.floor(Math.random() * list.length)] : undefined;
+
 /** 分配角色 */
 export function assignMysteryRoles(playerIds: string[]): { characters: Record<string, CharacterCard>; murdererId: string } {
   const shuffledChars = [...CHARACTER_POOL].sort(() => Math.random() - 0.5);
@@ -276,71 +279,106 @@ export function generateMysterySpeech(
 ): string {
   const { character } = player;
   const isMurderer = character.isMurderer;
+  const aliveOthers = getAlivePlayers(state).filter((p) => p.playerId !== player.playerId);
 
+  // ---- 公共辅助：构建上下文 ----
+  const discoveredNames = state.discoveredClues.map((id) => {
+    const c = state.clues.find((cl) => cl.id === id);
+    return c ? c.name : id;
+  });
+  const recentDiscussions = state.discussionLog.filter((d) => d.playerId !== player.playerId).slice(-4);
+  const highSuspicion = aliveOthers.filter((p) => p.suspicionLevel > 0).sort((a, b) => b.suspicionLevel - a.suspicionLevel);
+  const topSuspect = highSuspicion[0];
+
+  // ---- 自我介绍阶段 ----
   if (type === 'introduction') {
-    // 自我介绍
-    const templates = [
-      `大家好，我是${character.name}，${character.role}。${character.backstory}`,
-      `我是${character.name}，在这家已经工作很久了。${character.relationshipToVictim}`,
-      `你们好，我是${character.name}。关于这件事，我知道一些内情...`,
-    ];
-    return templates[Math.floor(Math.random() * templates.length)];
+    const openerTemplates = isMurderer
+      ? [
+          `我是${character.name}，${character.backstory.slice(0, 30)}……关于今晚的事，我会配合调查。`,
+          `诸位好，我是${character.name}，${character.role}。${character.backstory.slice(0, 25)}……愿真相大白。`,
+          `我是${character.name}，${character.backstory.slice(0, 30)}……希望今晚能平安度过。`,
+        ]
+      : [
+          `我是${character.name}，${character.role}。${character.backstory.slice(0, 30)}……我会尽力协助查明真相。`,
+          `各位好，我是${character.name}，${character.relationshipToVictim}`,
+          `我是${character.name}，${character.role}。${character.backstory.slice(0, 30)}……我对这起案件十分痛心。`,
+        ];
+    return pick(openerTemplates)!;
   }
 
-  if (type === 'investigation') {
-    // 调查阶段的发言
+  // ---- 调查/讨论阶段 ----
+  if (type === 'investigation' || type === 'discussion') {
     if (isMurderer) {
-      const templates = [
-        `我觉得我们应该冷静分析，不要被表面现象迷惑。`,
-        `我注意到有些人的不在场证明似乎不太完整...`,
-        `这件事很复杂，我们需要更多线索才能下结论。`,
-      ];
-      return templates[Math.floor(Math.random() * templates.length)];
-    } else {
-      const templates = [
-        `根据我的观察，有些人的行为很可疑。`,
-        `${character.secret} 我觉得这可能与案件有关。`,
-        `我们应该仔细调查每个人的不在场证明。`,
-      ];
-      return templates[Math.floor(Math.random() * templates.length)];
-    }
-  }
-
-  if (type === 'accusation') {
-    // 指控阶段
-    if (isMurderer) {
-      // 凶手：嫁祸他人
-      const others = getAlivePlayers(state).filter((p) => p.playerId !== player.playerId);
-      const target = others[Math.floor(Math.random() * others.length)];
-      return `我觉得${target.nickname}很可疑，${target.character.alibi} 这个不在站不住脚！`;
-    } else {
-      // 侦探：根据线索推理
-      const suspicious = getAlivePlayers(state).filter((p) => p.suspicionLevel > 0);
-      if (suspicious.length > 0) {
-        const target = suspicious[Math.floor(Math.random() * suspicious.length)];
-        return `根据线索，我认为${target.nickname}有重大嫌疑！`;
+      // 凶手策略：保持冷静、引导怀疑方向
+      if (topSuspect && topSuspect.playerId !== player.playerId) {
+        return `我注意到 ${topSuspect.nickname}（${topSuspect.character.name}）的反应有些不对劲，大家不妨听听 ${topSuspect.nickname} 的解释。`;
       }
-      return `我还在收集证据，但我感觉真相即将浮出水面...`;
+      if (recentDiscussions.length > 0) {
+        const last = recentDiscussions[recentDiscussions.length - 1]!;
+        return `我同意 ${last.playerName}（${last.characterName}）的看法，我们需要更多证据而不是猜测。`;
+      }
+      const evadeTemplates = [
+        `我认为现在下结论太早了，${character.personality}，我需要看到更多事实。`,
+        `这件事没那么简单，希望大家不要被别人带节奏。`,
+        `根据我的经验，真正的凶手往往擅长伪装成受害者的样子。`,
+      ];
+      return pick(evadeTemplates)!;
+    }
+
+    // 非凶手：结合线索和讨论
+    if (discoveredNames.length > 0 && Math.random() < 0.6) {
+      const keyClue = discoveredNames.find((n) => state.clues.find((c) => c.name === n)?.isKey);
+      const clueName = keyClue ?? discoveredNames[discoveredNames.length - 1]!;
+      const clue = state.clues.find((c) => c.name === clueName);
+      if (clue && topSuspect) {
+        return `我们发现的关键线索【${clueName}】：${clue.revealsInfo.slice(0, 40)}……我觉得这与 ${topSuspect.nickname}（${topSuspect.character.name}）有关，大家怎么认为？`;
+      }
+      if (clue) {
+        return `线索【${clueName}】揭示了：${clue.revealsInfo}，请大家仔细分析这条线索的含义。`;
+      }
+    }
+    if (topSuspect && Math.random() < 0.5) {
+      return `从目前的线索来看，${topSuspect.nickname}（${topSuspect.character.name}）的嫌疑最大，${topSuspect.character.alibi}似乎站不住脚。`;
+    }
+    if (recentDiscussions.length > 0) {
+      const last = recentDiscussions[recentDiscussions.length - 1]!;
+      return `我注意到 ${last.playerName}（${last.characterName}）提到"${last.content.slice(0, 30)}…"，这点很有趣。`;
+    }
+    const generalTemplates = [
+      `根据${character.personality}的观察，我觉得案情还有隐藏的细节。`,
+      `${character.secret} 也许这是解开谜题的关键。`,
+      `我们应该逐一排查每个人的不在场证明，${character.alibi}可以作为参考。`,
+      `真相往往隐藏在细节中，我注意到一些之前被忽略的地方。`,
+    ];
+    return pick(generalTemplates)!;
+  }
+
+  // ---- 指控阶段 ----
+  if (type === 'accusation') {
+    if (isMurderer) {
+      // 凶手嫁祸：优先选高嫌疑且非凶手的人
+      const candidates = aliveOthers.filter((p) => !p.character.isMurderer).sort((a, b) => b.suspicionLevel - a.suspicionLevel);
+      const target = candidates[0] ?? aliveOthers[0];
+      if (target) {
+        return `我指控${target.nickname}（${target.character.name}）！${target.character.alibi} 这个不在场证明完全站不住脚！`;
+      }
+      return `我觉得${aliveOthers[0]?.nickname}（${aliveOthers[0]?.character.name}）非常可疑！`;
+    } else {
+      // 侦探：基于线索和嫌疑投票
+      if (topSuspect) {
+        return `根据我们收集的所有线索，我指控${topSuspect.nickname}（${topSuspect.character.name}）是凶手！`;
+      }
+      if (discoveredNames.length > 0) {
+        const keyClue = discoveredNames.find((n) => state.clues.find((c) => c.name === n)?.isKey);
+        if (keyClue) {
+          return `关键线索【${keyClue}】指向了重要信息，但我还需要更多时间来确认凶手身份。`;
+        }
+      }
+      return `我还在调查中，请大家再给我一点时间。`;
     }
   }
 
-  // 讨论阶段
-  if (isMurderer) {
-    const templates = [
-      `我觉得我们要团结一致，不要被凶手带节奏。`,
-      `我注意到有人在转移话题，大家小心。`,
-      `根据我的经验，这种案子通常有出人意料的真相。`,
-    ];
-    return templates[Math.floor(Math.random() * templates.length)];
-  } else {
-    const templates = [
-      `从现有的线索来看，凶手一定留下了蛛丝马迹。`,
-      `我有个想法，但需要更多证据来验证。`,
-      `我们不应该轻易下结论，要继续调查。`,
-      `${character.personality} 的直觉告诉我，真相只有一个。`,
-    ];
-    return templates[Math.floor(Math.random() * templates.length)];
-  }
+  return '';
 }
 
 /** 生成 AI 投票 */
@@ -359,13 +397,23 @@ export function decideMysteryVote(
   let target: MysteryPlayerState;
 
   if (isMurderer) {
-    // 凶手：投给嫌疑最高的人（转移注意力）或随机
+    // 凶手：优先嫁祸高嫌疑的非凶手玩家
     const nonMurderers = alivePlayers.filter((p) => !p.character.isMurderer);
-    target = nonMurderers[Math.floor(Math.random() * nonMurderers.length)] ?? alivePlayers[0];
+    const sorted = [...nonMurderers].sort((a, b) => b.suspicionLevel - a.suspicionLevel);
+    target = sorted[0] ?? nonMurderers[Math.floor(Math.random() * nonMurderers.length)] ?? alivePlayers[0];
   } else {
-    // 其他玩家：投给嫌疑最高的人
-    const suspicious = alivePlayers.sort((a, b) => b.suspicionLevel - a.suspicionLevel);
-    target = suspicious[0] ?? alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
+    // 好人：根据线索和嫌疑推理
+    // 检查是否有关键线索指向某嫌疑人
+    const keyClue = state.clues.find((c) => c.isKey && state.discoveredClues.includes(c.id));
+    if (keyClue) {
+      // 关键线索发现后，优先投给最高嫌疑
+      const sorted = [...alivePlayers].sort((a, b) => b.suspicionLevel - a.suspicionLevel);
+      target = sorted[0] ?? alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
+    } else {
+      // 没有关键线索，按嫌疑投票
+      const sorted = [...alivePlayers].sort((a, b) => b.suspicionLevel - a.suspicionLevel);
+      target = sorted[0] ?? alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
+    }
   }
 
   return { playerId: player.playerId, targetId: target.playerId };

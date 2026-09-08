@@ -350,56 +350,129 @@ export function generateInvestigationSpeech(
   player: ThiefPlayerState,
 ): string {
   const alive = getAlivePlayers(state).filter((p) => p.playerId !== player.playerId);
-  const target = pick(alive);
+  if (alive.length === 0) return '目前没有更多信息，等待下一轮。';
 
-  if ((player.role === 'thief' || player.role === 'master_thief') && target) {
-    const templates = [
-      `我觉得 ${target.nickname} 的表现很可疑，一直在转移话题。`,
-      `我注意到 ${target.nickname} 对案件细节了解得太多了。`,
-      `${target.nickname} 刚才的回答有些前后矛盾。`,
-      `我怀疑 ${target.nickname}，TA 的眼神在闪躲。`,
-    ];
-    return pick(templates)!;
+  const sortedBySuspicion = [...alive].sort((a, b) => b.suspicion - a.suspicion);
+  const topSuspect = sortedBySuspicion[0];
+  const midSuspects = sortedBySuspicion.filter((p) => p.suspicion > 0 && p !== topSuspect).slice(0, 2);
+  const lastSpeakers = state.speechLog.filter((s) => s.playerId !== player.playerId).slice(-3);
+
+  // ---- 侦探：已知查验结果，据此发言 ----
+  if (player.role === 'detective') {
+    const myNotes = state.privateNotes[player.playerId] ?? [];
+    const confirmedInnocent = myNotes.filter((n) => n.includes('不是小偷')).map((n) => {
+      const m = n.match(/(\S+) 不是小偷/);
+      return m ? m[1] : null;
+    }).filter(Boolean) as string[];
+    const confirmedThief = myNotes.filter((n) => n.includes('就是小偷')).map((n) => {
+      const m = n.match(/(\S+) 就是小偷/);
+      return m ? m[1] : null;
+    }).filter(Boolean) as string[];
+
+    if (confirmedThief.length > 0) {
+      const name = confirmedThief[0]!;
+      return `我调查过 ${name}，${name} 就是小偷！请大家把票投给 ${name}，别再被其他人带偏了。`;
+    }
+    if (confirmedInnocent.length > 0 && topSuspect) {
+      const innocentName = confirmedInnocent[0]!;
+      return `我查过 ${innocentName}，${innocentName} 是清白的。现在嫌疑最高的是 ${topSuspect.nickname}，我建议重点观察 ${topSuspect.nickname}。`;
+    }
+    if (topSuspect) {
+      return `目前 ${topSuspect.nickname} 嫌疑最高，我需要再调查其他人来验证。请大家保持警惕。`;
+    }
+    return `我打算再调查一轮，尽快锁定目标。大家有任何发现请说出来。`;
   }
-  if (player.role === 'accomplice' && target) {
-    const templates = [
-      `大家不应该只关注一个人，${target.nickname} 也有嫌疑。`,
-      `我觉得应该多听听 ${target.nickname} 的说法。`,
-      `${target.nickname} 刚才的发言有些奇怪。`,
-    ];
-    return pick(templates)!;
+
+  // ---- 小偷/神偷：嫁祸高嫌疑但非队友的人 ----
+  if (player.role === 'thief' || player.role === 'master_thief') {
+    const nonThiefTargets = alive.filter((p) => !state.thiefTeamIds.includes(p.playerId));
+    const bestFrame = nonThiefTargets.filter((p) => p.suspicion > 0).sort((a, b) => b.suspicion - a.suspicion)[0] ?? nonThiefTargets[0];
+    if (bestFrame) {
+      const frameReasons = [
+        `我觉得 ${bestFrame.nickname} 太紧张了，一直在看其他人，明显在掩饰什么。`,
+        `我注意到 ${bestFrame.nickname} 对现场细节的反应很奇怪，不太对劲。`,
+        `你们没发现吗？${bestFrame.nickname} 的发言前后矛盾，${bestFrame.nickname} 一定有问题。`,
+        `${bestFrame.nickname} 一直在转移话题，我觉得 ${bestFrame.nickname} 很可疑。`,
+      ];
+      // 如果 lastSpeakers 里有提到某人，可以呼应
+      if (lastSpeakers.length > 0) {
+        const recent = lastSpeakers[lastSpeakers.length - 1]!;
+        if (recent.playerId !== bestFrame.playerId) {
+          return `我同意 ${recent.nickname} 的看法，${bestFrame.nickname} 确实很可疑，${bestFrame.nickname} 需要解释一下。`;
+        }
+      }
+      return pick(frameReasons)!;
+    }
+    return `大家都挺正常的，但我感觉有人在演戏。`;
   }
-  if (player.role === 'detective' && target) {
-    const templates = [
-      `根据我的调查，${target.nickname} 需要解释一下刚才的发言。`,
-      `我掌握了一些线索，${target.nickname} 请回答我的问题。`,
-      `从目前的证据来看，${target.nickname} 的嫌疑不能排除。`,
-    ];
-    return pick(templates)!;
+
+  // ---- 同伙：保队友、挑别人 ----
+  if (player.role === 'accomplice') {
+    const teammate = alive.find((p) => state.thiefTeamIds.includes(p.playerId));
+    if (teammate && topSuspect && topSuspect.playerId !== teammate.playerId) {
+      return `我觉得真正可疑的是 ${topSuspect.nickname}，${teammate.nickname} 一直很冷静，不要转移目标。`;
+    }
+    if (topSuspect) {
+      return `${topSuspect.nickname} 最近表现很奇怪，建议大家多留意。`;
+    }
+    return `我没什么特别怀疑的，大家先别急着投票。`;
   }
+
+  // ---- 目击者：分享线索或提示 ----
   if (player.role === 'witness') {
-    const templates = [
-      `我注意到了一些不寻常的细节，稍后和大家分享。`,
-      `根据我的观察，事情可能不是表面看起来那样。`,
-      `我有一条线索想和大家分享，但我需要再确认一下。`,
-    ];
-    return pick(templates)!;
+    if (state.revealedClues.length > 0) {
+      const lastClue = state.revealedClues[state.revealedClues.length - 1];
+      return `关于那条线索【${lastClue}】，我觉得可以再深挖一下。`;
+    }
+    if (topSuspect) {
+      return `我观察到 ${topSuspect.nickname} 的行为有些异常，希望能找出更多证据。`;
+    }
+    return `我正在观察每个人的反应，稍后会有发现。`;
   }
-  if (target) {
-    const templates = [
-      `我觉得 ${target.nickname} 的发言有些可疑。`,
-      `我同意侦探的看法，${target.nickname} 需要解释一下。`,
-      `从目前的线索来看，${target.nickname} 不能排除嫌疑。`,
-      `我注意到 ${target.nickname} 一直在回避关键问题。`,
+
+  // ---- 普通市民：结合嫌疑和发言推理 ----
+  if (topSuspect) {
+    const reasonTemplates = [
+      `${topSuspect.nickname} 嫌疑已经 ${topSuspect.suspicion} 了，大家小心。`,
+      `我同意把 ${topSuspect.nickname} 列为重点怀疑对象，${topSuspect.nickname} 需要给出解释。`,
+      `${topSuspect.nickname} 一直回避问题，${topSuspect.nickname} 肯定有鬼。`,
     ];
-    return pick(templates)!;
+    if (midSuspects.length > 0) {
+      const second = midSuspects[0]!;
+      return `现在 ${topSuspect.nickname} 和 ${second.nickname} 嫌疑都比较高，但我更怀疑 ${topSuspect.nickname}。`;
+    }
+    return pick(reasonTemplates)!;
   }
-  return '我暂时没有特别的看法。';
+
+  // 引用最近发言
+  if (lastSpeakers.length > 0) {
+    const last = lastSpeakers[lastSpeakers.length - 1]!;
+    return `我注意到 ${last.nickname} 刚才说"${last.content.slice(0, 40)}…"，这点很值得思考。`;
+  }
+
+  return '目前信息还不够，我需要再观察一轮。';
 }
 
-/** AI 侦探调查目标：随机存活非自己 */
+/** AI 侦探调查目标：优先查高嫌疑但未查过的玩家，随机兜底 */
 export function decideDetectiveTarget(state: ThiefGameState, detective: ThiefPlayerState): string | undefined {
   const targets = getAlivePlayers(state).filter((p) => p.playerId !== detective.playerId);
+  if (targets.length === 0) return undefined;
+
+  const investigatedIds = new Set(
+    (state.privateNotes[detective.playerId] ?? [])
+      .map((n) => {
+        const m = n.match(/(\S+) (就是|不是)小偷/);
+        return m ? targets.find((t) => t.nickname === m[1])?.playerId : null;
+      })
+      .filter(Boolean) as string[],
+  );
+  // 未查过的高嫌疑目标
+  const uninvestigated = targets.filter((p) => !investigatedIds.has(p.playerId));
+  if (uninvestigated.length > 0) {
+    const sorted = [...uninvestigated].sort((a, b) => b.suspicion - a.suspicion);
+    return sorted[0].playerId;
+  }
+  // 全部查过了，随机复查
   return pick(targets)?.playerId;
 }
 
@@ -412,18 +485,40 @@ export function decideThiefVote(
   if (alive.length === 0) return { targetId: null };
 
   if (state.thiefTeamIds.includes(player.playerId)) {
-    // 小偷阵营：投非小偷阵营（优先嫌疑高的，推波助澜）
+    // 小偷阵营：优先投非队友中嫌疑最高的，推波助澜
     const citizens = alive.filter((p) => !state.thiefTeamIds.includes(p.playerId));
     if (citizens.length === 0) return { targetId: null };
     const sorted = [...citizens].sort((a, b) => b.suspicion - a.suspicion);
+    // 最后1轮且自己高嫌疑时，保命优先
+    if (sorted.length === 1 && player.suspicion >= 2) {
+      return { targetId: sorted[0].playerId };
+    }
     return { targetId: sorted[0].playerId };
   }
 
-  // 好人阵营：按嫌疑投票（侦探若有查杀信息在 privateNotes 里，无法结构化读取，退化为嫌疑启发）
+  // 好人阵营
+  if (player.role === 'detective') {
+    const myNotes = state.privateNotes[player.playerId] ?? [];
+    const confirmedThief = myNotes.filter((n) => n.includes('就是小偷')).map((n) => {
+      const m = n.match(/(\S+) 就是小偷/);
+      return m ? m[1] : null;
+    }).filter(Boolean);
+    if (confirmedThief.length > 0) {
+      const target = alive.find((p) => p.nickname === confirmedThief[0]);
+      if (target) return { targetId: target.playerId };
+    }
+    // 没有确认小偷信息，按嫌疑投票
+    const sorted = [...alive].sort((a, b) => b.suspicion - a.suspicion);
+    if (sorted[0] && sorted[0].suspicion >= 2) return { targetId: sorted[0].playerId };
+    if (Math.random() < 0.15) return { targetId: null };
+    return { targetId: sorted[0]?.playerId ?? null };
+  }
+
+  // 普通市民：按嫌疑投票，偶有随机
   const sorted = [...alive].sort((a, b) => b.suspicion - a.suspicion);
   if (sorted[0] && sorted[0].suspicion > 0) return { targetId: sorted[0].playerId };
   if (Math.random() < 0.1) return { targetId: null };
-  return { targetId: sorted[0].playerId };
+  return { targetId: sorted[0]?.playerId ?? null };
 }
 
 /** AI 目击者是否公开线索（嫌疑信息不足时更倾向公开） */

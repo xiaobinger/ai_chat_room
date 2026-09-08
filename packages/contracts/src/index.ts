@@ -576,7 +576,7 @@ export const WSEventSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('game_player_left'),
-    payload: z.object({ playerId: z.string() }),
+    payload: z.object({ playerId: z.string(), nickname: z.string().optional() }),
   }),
   z.object({
     type: z.literal('game_started'),
@@ -635,6 +635,10 @@ export const WSEventSchema = z.discriminatedUnion('type', [
       round: z.number().optional(),
       deadline: z.number().nullable().optional(),
     }),
+  }),
+  z.object({
+    type: z.literal('game_restarted'),
+    payload: z.object({ roomId: z.string() }),
   }),
 ]);
 export type WSEvent = z.infer<typeof WSEventSchema>;

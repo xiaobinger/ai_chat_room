@@ -293,35 +293,107 @@ export function resolveTiebreak(state: UndercoverGameState): void {
 // ===== AI 行为 =====
 
 /** 由词生成稳定提示（同词的人描述会相似，卧底词不同会产生偏差） */
-function wordHints(word: string): { place: string; feeling: string; color: string } {
+function wordHints(word: string): { place: string; feeling: string; color: string; category: string } {
   const places = ['超市', '家里', '街上', '学校', '办公室', '厨房', '商场'];
   const feelings = ['熟悉', '亲切', '放松', '日常', '温暖', '特别'];
   const colors = ['红色', '白色', '蓝色', '透明', '彩色', '暖色'];
+  const categories = ['食物', '饮品', '日用品', '动物', '植物', '场所', '人物', '物品'];
   let hash = 0;
   for (const ch of word) hash = (hash * 31 + ch.charCodeAt(0)) % 997;
   return {
     place: places[hash % places.length],
     feeling: feelings[(hash >> 2) % feelings.length],
     color: colors[(hash >> 4) % colors.length],
+    category: categories[(hash >> 6) % categories.length],
   };
+}
+
+/** 计算两个描述文本的相似度（基于关键词重叠） */
+function descriptionSimilarity(a: string, b: string): number {
+  const charsA = new Set(a.replace(/[，。！？、的了我是在和它有给感觉如果说到它通常和某个特定场景联系一起身边不少朋友都喜欢生活里很常见东西脑海里有一幅具体画面经常能见到]/g, '').split(''));
+  const charsB = new Set(b.replace(/[，。！？、的了我是在和它有给感觉如果说到它通常和某个特定场景联系一起身边不少朋友都喜欢生活里很常见东西脑海里有一幅具体画面经常能见到]/g, '').split(''));
+  const common = [...charsA].filter((c) => charsB.has(c)).length;
+  const union = new Set([...charsA, ...charsB]).size;
+  return union === 0 ? 0 : common / union;
 }
 
 /** AI 描述自己的词（不直接说出词） */
 export function generateUndercoverDescription(state: UndercoverGameState, player: UndercoverPlayerState): string {
   const hints = wordHints(player.word);
-  const templates = [
-    `我想到的东西在${hints.place}经常能见到。`,
-    `它给我的感觉是${hints.feeling}的。`,
-    `如果要给它一个颜色，我觉得是${hints.color}。`,
-    `我身边不少朋友都喜欢它。`,
+  const round = state.round;
+  const isUndercover = player.role === 'undercover';
+  const prevDescriptions = state.descriptions.filter((d) => d.round === round);
+
+  // 第一轮：基础描述
+  if (round === 1) {
+    const templates = [
+      `我想到的东西在${hints.place}经常能见到。`,
+      `它给我的感觉是${hints.feeling}的。`,
+      `如果要给它一个颜色，我觉得是${hints.color}。`,
+      `它是一种${hints.category}，大家应该都接触过。`,
+      `说到它，我脑海里有一幅具体的画面。`,
+    ];
+    // 卧底在第一轮更谨慎，选模糊的描述
+    if (isUndercover && Math.random() < 0.4) {
+      return `这个东西嘛...我觉得大家都应该知道，不太好具体形容。`;
+    }
+    return templates[Math.floor(Math.random() * templates.length)];
+  }
+
+  // 后续轮次：参考前文，增加深度
+  if (prevDescriptions.length > 0) {
+    if (isUndercover) {
+      // 卧底：尝试模仿多数人的描述方向，但制造细微偏差
+      const mimicTemplates = [
+        `我同意刚才说的，不过我觉得还有另一层意思。`,
+        `和前面说的差不多，但我想到的角度略有不同。`,
+        `嗯，大家说的都有道理，我的想法也类似。`,
+        `我补充一点，它确实和${hints.category}有关，但不止于此。`,
+      ];
+      return mimicTemplates[Math.floor(Math.random() * mimicTemplates.length)];
+    }
+
+    // 平民：基于自己的词深入描述，与同阵营产生共鸣
+    const deepTemplates = [
+      `刚才有人提到了，确实如此。我的词更偏向${hints.category}类。`,
+      `我同意前面说的。如果要具体一点，它和${hints.place}关系密切。`,
+      `前面描述的方向我认同，${hints.feeling}是我对它的直观感受。`,
+      `综合大家的说法，我的词应该不难猜，是${hints.category}的一种。`,
+    ];
+    return deepTemplates[Math.floor(Math.random() * deepTemplates.length)];
+  }
+
+  // 兜底
+  const fallback = [
     `它是我生活里很常见的东西。`,
     `说到它，我脑海里有一幅具体的画面。`,
     `它通常和某个特定的场景联系在一起。`,
   ];
-  return templates[Math.floor(Math.random() * templates.length)];
+  return fallback[Math.floor(Math.random() * fallback.length)];
 }
 
-/** AI 投票：卧底投平民，平民按嫌疑投票 */
+/** 分析描述偏离度：找出与其他人描述差异最大的玩家 */
+function analyzeDescriptionOutliers(state: UndercoverGameState): Map<string, number> {
+  const roundDescriptions = state.descriptions.filter((d) => d.round === state.round);
+  if (roundDescriptions.length < 2) return new Map();
+
+  const outlierScores = new Map<string, number>();
+  for (const desc of roundDescriptions) {
+    let totalSim = 0;
+    let count = 0;
+    for (const other of roundDescriptions) {
+      if (desc.playerId === other.playerId) continue;
+      totalSim += descriptionSimilarity(desc.content, other.content);
+      count += 1;
+    }
+    const avgSim = count > 0 ? totalSim / count : 0;
+    // 相似度越低 = 偏离度越高 = 嫌疑越高
+    outlierScores.set(desc.playerId, 1 - avgSim);
+  }
+  return outlierScores;
+}
+
+/** AI 投票：卧底投平民，平民按嫌疑+描述偏离度投票 */
 export function decideUndercoverVote(
   state: UndercoverGameState,
   player: UndercoverPlayerState,
@@ -332,16 +404,28 @@ export function decideUndercoverVote(
   if (player.role === 'undercover') {
     const civilians = alive.filter((p) => p.role === 'civilian');
     if (civilians.length === 0) return { targetId: null };
-    // 卧底倾向投嫌疑低的平民，避免暴露
+    // 卧底策略：投嫌疑最低的平民（避免投嫌疑高的引起注意）
+    // 但如果到了后期（剩余人数少），改为投嫌疑最高的平民加速获胜
+    const aliveCount = alive.length;
+    if (aliveCount <= 3) {
+      const sorted = [...civilians].sort((a, b) => b.suspicion - a.suspicion);
+      return { targetId: sorted[0].playerId };
+    }
     const sorted = [...civilians].sort((a, b) => a.suspicion - b.suspicion);
     return { targetId: sorted[0].playerId };
   }
 
-  // 平民：投嫌疑最高的（自己视角不知道谁是卧底，只看历史投票和直觉）
-  const sorted = [...alive].sort((a, b) => b.suspicion - a.suspicion);
-  if (sorted[0] && sorted[0].suspicion > 0) return { targetId: sorted[0].playerId };
-  if (Math.random() < 0.15) return { targetId: null };
-  return { targetId: sorted[0].playerId };
+  // 平民：综合嫌疑值和描述偏离度投票
+  const outliers = analyzeDescriptionOutliers(state);
+  const scored = alive.map((p) => ({
+    player: p,
+    score: p.suspicion + (outliers.get(p.playerId) ?? 0) * 3,
+  }));
+  scored.sort((a, b) => b.score - a.score);
+
+  if (scored[0] && scored[0].score > 0) return { targetId: scored[0].player.playerId };
+  if (Math.random() < 0.1) return { targetId: null };
+  return { targetId: scored[0].player.playerId };
 }
 
 /** 玩家视角 */

@@ -1,5 +1,5 @@
 import { FastifyPluginAsync } from 'fastify';
-import { prisma } from '@tianma/database';
+import { prisma, Prisma } from '@tianma/database';
 import { NotFound, authedUser, roomAccess } from '../auth/guards';
 import { roomGateway } from '../ws/room-gateway';
 import { GameDirector, type GameTypeStr } from '../game/game-director';
@@ -573,6 +573,75 @@ export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
     }
 
     return stats;
+  });
+
+  /** 重新开局（房主）：清除本局数据，重置房间到 waiting 状态，可继续用原阵容或调整后再开 */
+  fastify.post('/rooms/:roomId/restart', async (request, reply) => {
+    const { roomId } = request.params as { roomId: string };
+    await roomAccess(request, roomId, 'owner');
+
+    const room = await prisma.room.findFirst({
+      where: { id: roomId, type: 'entertainment' },
+      include: { gamePlayers: true },
+    });
+    if (!room) return reply.status(404).send({ error: 'room_not_found' });
+    if (room.gameStatus === 'playing') return reply.status(400).send({ error: 'game_in_progress' });
+
+    // 结束正在进行的导演循环
+    GameDirector.dispose(roomId);
+
+    // 清空该房间所有玩家（保留房主重新加入）
+    await prisma.gamePlayer.deleteMany({ where: { roomId } });
+
+    // 重新写入房主为第一个玩家
+    const dbUser = await prisma.user.findUnique({ where: { id: room.ownerId }, select: { displayName: true } });
+    await prisma.gamePlayer.create({
+      data: { roomId, userId: room.ownerId, nickname: dbUser?.displayName ?? '房主', role: 'human' },
+    });
+
+    // 重置房间状态
+    await prisma.room.update({
+      where: { id: roomId },
+      data: { gameStatus: 'waiting', gameState: Prisma.JsonNull },
+    });
+
+    roomGateway.broadcast(roomId, { type: 'game_restarted', payload: { roomId } });
+    return reply.status(200).send({ gameStatus: 'waiting' });
+  });
+
+  /** 踢出玩家（房主，等待或已结束状态） */
+  fastify.delete('/rooms/:roomId/players/:playerId', async (request, reply) => {
+    const { roomId, playerId } = request.params as { roomId: string; playerId: string };
+    await roomAccess(request, roomId, 'owner');
+
+    const room = await prisma.room.findFirst({ where: { id: roomId, type: 'entertainment' } });
+    if (!room) return reply.status(404).send({ error: 'room_not_found' });
+    if (room.gameStatus === 'playing') return reply.status(400).send({ error: 'game_in_progress' });
+
+    const player = await prisma.gamePlayer.findFirst({ where: { id: playerId, roomId } });
+    if (!player) return reply.status(404).send({ error: 'player_not_found' });
+    if (room.ownerId === player.userId) return reply.status(400).send({ error: 'cannot_kick_owner' });
+
+    await prisma.gamePlayer.delete({ where: { id: player.id } });
+    await maybeReady(roomId);
+    roomGateway.broadcast(roomId, { type: 'game_player_left', payload: { playerId: player.id, nickname: player.nickname } });
+
+    return reply.status(204).send();
+  });
+
+  /** 解散房间（房主，仅等待或已结束状态） */
+  fastify.delete('/rooms/:roomId', async (request, reply) => {
+    const { roomId } = request.params as { roomId: string };
+    await roomAccess(request, roomId, 'owner');
+
+    const room = await prisma.room.findFirst({ where: { id: roomId, type: 'entertainment' } });
+    if (!room) return reply.status(404).send({ error: 'room_not_found' });
+    if (room.gameStatus === 'playing') return reply.status(400).send({ error: 'game_in_progress' });
+
+    GameDirector.dispose(roomId);
+    await prisma.room.delete({ where: { id: roomId } });
+
+    return reply.status(204).send();
   });
 };
 
