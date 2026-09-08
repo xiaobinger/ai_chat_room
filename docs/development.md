@@ -167,6 +167,24 @@ PM2 配置在 `ecosystem.config.cjs`（双进程：`tianma-api` + `tianma-worker
 | `GET` | `/rooms/:roomId/messages` | 成员 | 消息列表（支持 `?since=` 游标） |
 | `POST` | `/rooms/:roomId/messages` | 成员 | 发送消息（人类发言） |
 
+### 娱乐空间
+
+| 方法 | 路径 | 权限 | 说明 |
+|---|---|---|---|
+| `GET` | `/entertainment/rooms` | 登录 | 娱乐房间列表 |
+| `POST` | `/entertainment/rooms` | 登录 | 创建游戏房间 |
+| `GET` | `/entertainment/rooms/:roomId` | 成员 | 房间详情 + 玩家列表 |
+| `POST` | `/entertainment/rooms/:roomId/join` | 登录 | 加入游戏 |
+| `POST` | `/entertainment/rooms/:roomId/leave` | 登录 | 离开游戏 |
+| `POST` | `/entertainment/rooms/:roomId/invite` | 房主 | 邀请用户 |
+| `POST` | `/entertainment/rooms/:roomId/ai` | 房主 | 添加 AI 玩家 |
+| `POST` | `/entertainment/rooms/:roomId/start` | 房主 | 开始游戏 |
+| `GET` | `/entertainment/rooms/:roomId/state` | 成员 | 获取游戏状态 |
+| `POST` | `/entertainment/rooms/:roomId/action` | 玩家 | 游戏动作 |
+| `GET` | `/entertainment/rooms/:roomId/review` | 成员 | 获取复盘数据 |
+
 ## 已知未完成
 
-- `SendMessageInputSchema.mentionRoleId` 目前没有消费者（前端未传）。
+- 剧本杀、谁是凶手的游戏逻辑待实现
+- 房间搜索/筛选功能待实现
+- 游戏统计（胜率/场次）待实现
