@@ -306,6 +306,44 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 - `pnpm test`：189 测试全绿
 - `pnpm lint`：0 errors
 
+## 2026-09-08：WP12 娱乐空间游戏全面重构 + 谁是卧底
+
+### 关键事件
+- **统一游戏引擎架构**：
+  - 新建 `BaseGameEngine` 抽象基类，四游戏实现统一接口：`step/pendingHumans/phaseDeadlineMs/handleAction/autoAct/getView/getState/isFinished/getResults/getRoles`
+  - 废弃旧运行器（game-runner / mystery-runner / thief-game-runner），改为 BaseGameEngine 子类
+- **GameDirector 编排器**（`apps/api/src/game/game-director.ts`）：
+  - AI 自动推进 + 人类玩家等待 + 阶段超时托管（到点 autoAct，游戏永不卡死）
+  - 状态持久化（每步写 DB `Room.gameState`）+ 进程重启恢复
+  - WS 广播 `game_state_updated` 事件（含 phase/round/deadline）
+  - 结束结算（角色/胜负写回 `GamePlayer.gameData`）
+- **新增"谁是卧底"游戏**：
+  - 引擎 `who-is-undercover-engine.ts` + 运行器 `undercover-game.ts`
+  - 4-12 人，描述阶段 + 投票阶段双循环
+  - 内置 48 对近似词库（可乐/雪碧、包子/饺子…）
+  - AI 描述用词哈希生成稳定提示，AI 投票按嫌疑度启发式
+- **狼人杀关键修复**：
+  - 女巫药剂改为即时消耗（applyWitchAction 时），重复用药直接报错
+  - 预言家死循环：所有存活者查验完后 `decideSeerCheck` 返回 undefined，用自身 playerId 占位标记
+  - `getResults` / `getRoles` 使用中文角色标签
+- **谁是凶手修复**：人类投票、侦探私密结果、视角净化、观众模式
+- **剧本杀修复**：人类动作、视角净化、观众模式（`getPlayerView` 的 playerId 改为 `string | null`）
+- **前端全面重写**：
+  - `GameRoom.tsx`：WS 实时 + 4s 轮询兜底，waiting/playing/finished 三态分流
+  - 四个游戏视图组件：`WerewolfView` / `ThiefGameView` / `MysteryView` / `UndercoverView`
+  - 共享 UI 库 `game-parts.tsx`：Countdown / PhaseBadge / RoleCard / VoteGrid / Timeline / SpeechInput
+  - `useGameRoomSocket.ts`：游戏房 WS hook，指数退避重连
+- **防作弊**：
+  - `guards.ts` 的 `isRoomParticipant` 增加 GamePlayer 检查，游戏房普通玩家可连 WS
+  - 对局中 `GET /rooms/:id` 和 `/review` 隐藏 gameState
+  - `game_started` payload 的 gameState 改为 optional
+- **测试**：新建 `games.test.ts`，16 个游戏测试覆盖四游戏完整对局流程、视角净化、道具限次消耗、重启恢复
+
+### 验证
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：74 测试全绿（含 16 个游戏测试）
+- `pnpm lint`：0 errors
+
 ## 项目历程总结
 
 | 日期 | 阶段 | 关键产出 | 状态 |
@@ -319,6 +357,7 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 | 2026-09-07 | WP9 人类参与+治理增强 | 人类参与辩论、房主禁言/移出/解散、重启讨论、邀请加入、@点名 | ✅ |
 | 2026-09-07 | WP10 娱乐空间+聊天室增强 | 娱乐空间 Phase 1-3、@点名系统、身份徽章、面具昵称、复盘回放 | ✅ |
 | 2026-09-08 | WP11 娱乐空间扩展 | 谁是凶手+剧本杀游戏、彩蛋角色/事件、搜索筛选、游戏统计 | ✅ |
+| 2026-09-08 | WP12 游戏全面重构 | BaseGameEngine 统一架构、GameDirector 编排器、谁是卧底、四游戏商用化 | ✅ |
 
 ## 经验教训
 1. Windows 环境下工作区路径处理需要特别小心，`\\?\` 前缀会导致 CMD 和部分 Node 工具异常
