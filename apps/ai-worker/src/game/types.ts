@@ -1,6 +1,6 @@
 /** 狼人杀游戏类型定义（v2：整局限药 + 多狼投票 + 猎人开枪 + 阶段状态追踪） */
 
-export type GamePhase = 'night' | 'day' | 'vote' | 'finished';
+export type GamePhase = 'night' | 'day' | 'vote' | 'final_speech' | 'finished';
 
 export type WerewolfRole = 'werewolf' | 'villager' | 'seer' | 'witch' | 'hunter';
 
@@ -17,7 +17,7 @@ export interface GameLogEntry {
   id: string;
   round: number;
   phase: GamePhase;
-  type: 'phase_change' | 'player_action' | 'player_death' | 'vote_result' | 'game_start' | 'game_end';
+  type: 'phase_change' | 'player_action' | 'player_death' | 'vote_result' | 'game_start' | 'game_end' | 'judge_speak' | 'final_speech';
   actorId?: string;
   actorName?: string;
   targetId?: string;
@@ -74,6 +74,14 @@ export interface GameState {
   deadTonight: string[];
   /** 今天放逐/开枪死亡 */
   deadToday: string[];
+  /** 玩家临终遗言：playerId -> 遗言内容 */
+  finalSpeeches: Record<string, string>;
+  /** 临终遗言阶段：已发言/已跳过的死亡玩家 */
+  finalSpeechStatus: Record<string, 'spoken' | 'skipped'>;
+  /** 法官模式：owner=房主担任法官；ai=AI法官；null=无法官（兼容旧存档） */
+  judgeMode?: 'owner' | 'ai' | null;
+  /** 法官的 playerId（owner 模式下为房主 gamePlayerId；ai 模式下为 AI法官 gamePlayerId） */
+  judgePlayerId?: string | null;
   winner?: 'werewolf' | 'villager';
   events: GameLogEntry[];
 }
@@ -88,7 +96,10 @@ export type GameActionType =
   | 'day_skip'
   | 'vote'
   | 'vote_abstain'
-  | 'hunter_shoot';
+  | 'hunter_shoot'
+  | 'final_speech'
+  | 'final_speech_skip'
+  | 'judge_speak';
 
 export const ROLE_LABELS: Record<WerewolfRole, string> = {
   werewolf: '狼人',

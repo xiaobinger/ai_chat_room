@@ -584,6 +584,8 @@ export const WSEventSchema = z.discriminatedUnion('type', [
       /** 对局中的完整状态不再广播（防作弊），前端通过 /state 拉取各自的净化视角 */
       gameState: z.record(z.unknown()).optional(),
       players: z.array(z.object({ id: z.string(), nickname: z.string(), role: z.enum(['human', 'ai']) })),
+      judgeMode: z.enum(['owner', 'ai']).nullable().optional(),
+      judgePlayerId: z.string().nullable().optional(),
     }),
   }),
   z.object({

@@ -114,8 +114,12 @@ export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
       minPlayers?: number;
       maxPlayers?: number;
       visibility?: 'public' | 'private';
+      judgeMode?: 'owner' | 'ai' | null;
     };
     if (!isGameType(body.gameType)) return reply.status(400).send({ error: 'invalid_game_type' });
+    if (body.gameType !== 'werewolf' && body.judgeMode) {
+      return reply.status(400).send({ error: 'judge_mode_only_for_werewolf' });
+    }
     const config = GAME_CONFIGS[body.gameType];
     if (!body.title?.trim()) return reply.status(400).send({ error: 'missing_title' });
 
@@ -138,10 +142,11 @@ export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
         minPlayers,
         maxPlayers,
         ownerId: user.id,
+        judgeMode: body.judgeMode ?? null,
       },
     });
 
-    // 房主自动成为第一个玩家
+    // 房主自动成为第一个玩家（owner 法官模式下，房主将在开局时成为法官不分配角色）
     await prisma.gamePlayer.create({
       data: {
         roomId: room.id,
@@ -337,16 +342,52 @@ export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
       return reply.status(400).send({ error: 'not_enough_players', message: `该游戏至少需要 ${room.minPlayers} 名玩家` });
     }
 
-    const players = room.gamePlayers.map((p) => ({
+    // 根据 judgeMode 调整玩家列表
+    let players = room.gamePlayers.map((p) => ({
       id: p.id,
       userId: p.userId,
       nickname: p.nickname,
       role: p.role,
     }));
 
+    let aiJudgePlayerId: string | null = null;
+
+    if (room.gameType === 'werewolf' && room.judgeMode === 'owner') {
+      // 房主当法官：从玩家列表中移除房主（不分配角色），但保留其玩家 ID 作为法官 ID
+      const ownerGamePlayer = players.find((p) => p.userId === room.ownerId);
+      if (ownerGamePlayer) {
+        players = players.filter((p) => p.id !== ownerGamePlayer.id);
+        aiJudgePlayerId = ownerGamePlayer.id;
+      }
+    } else if (room.gameType === 'werewolf' && room.judgeMode === 'ai') {
+      // AI 法官：添加一名 AI 法官参与游戏（但不分配身份，仅负责广播）
+      const existingAiJudge = room.gamePlayers.find((p) => p.role === 'ai' && p.nickname === 'AI 法官');
+      if (existingAiJudge) {
+        aiJudgePlayerId = existingAiJudge.id;
+      } else {
+        const aiJudge = await prisma.gamePlayer.create({
+          data: { roomId, nickname: 'AI 法官', role: 'ai' },
+        });
+        players = [...players, { id: aiJudge.id, userId: null, nickname: aiJudge.nickname, role: aiJudge.role }];
+        aiJudgePlayerId = aiJudge.id;
+      }
+    }
+
+    const playerCountForGame = players.length;
+    const config = GAME_CONFIGS[room.gameType];
+    // 法官模式下需额外多一个人
+    const effectiveMin = room.judgeMode === 'ai' ? Math.max(room.minPlayers ?? config.min, 7) : (room.judgeMode === 'owner' ? Math.max(room.minPlayers ?? config.min, 6) : (room.minPlayers ?? config.min));
+    if (playerCountForGame < effectiveMin) {
+      return reply.status(400).send({ error: 'not_enough_players', message: `该游戏至少需要 ${effectiveMin} 名玩家（不含法官）` });
+    }
+
     let director: GameDirector;
     try {
-      director = GameDirector.create(roomId, room.gameType, players);
+      director = GameDirector.create(roomId, room.gameType, players, {
+        judgeMode: room.judgeMode,
+        judgePlayerId: aiJudgePlayerId,
+        ownerUserId: room.ownerId,
+      });
     } catch (error) {
       if (error instanceof GameError) {
         GameDirector.dispose(roomId);
@@ -363,16 +404,19 @@ export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
       data: { gameStatus: 'playing' },
     });
 
+    const allPlayers = room.gamePlayers.map((p) => ({ id: p.id, nickname: p.nickname, role: p.role }));
     roomGateway.broadcast(roomId, {
       type: 'game_started',
       payload: {
-        players: players.map((p) => ({ id: p.id, nickname: p.nickname, role: p.role })),
+        players: allPlayers,
+        judgeMode: room.judgeMode,
+        judgePlayerId: aiJudgePlayerId,
       },
     });
 
     void director.tick();
 
-    return reply.status(200).send({ gameStatus: 'playing' });
+    return reply.status(200).send({ gameStatus: 'playing', judgeMode: room.judgeMode });
   });
 
   /** 获取游戏状态（按请求者视角净化） */

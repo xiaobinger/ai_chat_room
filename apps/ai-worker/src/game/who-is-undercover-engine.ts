@@ -85,6 +85,7 @@ export function initUndercoverState(
     orderCursor: 0,
     votes: {},
     voteStatus: {},
+    consecutiveTies: 0,
     events: [
       {
         id: crypto.randomUUID(),
@@ -170,12 +171,13 @@ export function applyUndercoverVote(state: UndercoverGameState, playerId: string
   state.votes[playerId] = targetId;
 }
 
-/** 检查胜负：卧底清零 → 平民胜；只剩 3 人且仍有卧底 → 卧底胜 */
+/** 检查胜负：卧底清零 → 平民胜；只剩 1 平民 + 1 卧底 → 卧底胜 */
 export function checkUndercoverVictory(state: UndercoverGameState): 'civilians' | 'undercover' | null {
   const alive = getAlivePlayers(state);
   const aliveUndercover = alive.filter((p) => p.role === 'undercover').length;
+  const aliveCivilian = alive.length - aliveUndercover;
   if (aliveUndercover === 0) return 'civilians';
-  if (alive.length <= 3 && aliveUndercover >= 1) return 'undercover';
+  if (aliveCivilian <= 1 && aliveUndercover >= 1) return 'undercover';
   return null;
 }
 
@@ -215,8 +217,14 @@ export function resolveUndercoverVote(state: UndercoverGameState): void {
   }
 
   if (tie || !eliminated || maxVotes === 0) {
-    logEvent(state, 'vote_result', '平票，本轮无人出局');
+    state.consecutiveTies += 1;
+    logEvent(state, 'vote_result', `平票，本轮无人出局（连续僵局第 ${state.consecutiveTies} 轮）`);
+    if (state.consecutiveTies >= 3) {
+      resolveTiebreak(state);
+      return;
+    }
   } else {
+    state.consecutiveTies = 0;
     const target = findPlayer(state, eliminated);
     target.isAlive = false;
     target.eliminatedRound = state.round;
@@ -262,6 +270,24 @@ export function nextRound(state: UndercoverGameState): void {
   state.order = [...rest, first];
   state.orderCursor = 0;
   logEvent(state, 'phase_change', `第 ${state.round} 轮描述开始，从 ${findPlayer(state, state.order[0]).nickname} 开始`);
+}
+
+/** 连续 3 轮平票僵局：按嫌疑值最高者淘汰，强制打破僵局 */
+export function resolveTiebreak(state: UndercoverGameState): void {
+  state.consecutiveTies = 0;
+  const alive = getAlivePlayers(state);
+  const sorted = [...alive].sort((a, b) => b.suspicion - a.suspicion || (a.nickname > b.nickname ? 1 : -1));
+  const target = sorted[0]!;
+  target.isAlive = false;
+  target.eliminatedRound = state.round;
+  state.eliminatedThisRound = { playerId: target.playerId, role: target.role };
+  logEvent(
+    state,
+    'player_eliminated',
+    `连续 ${state.round} 轮平票僵局，${target.nickname} 因嫌疑最高被强制淘汰，身份是——${target.role === 'undercover' ? '卧底！' : '平民。'}`,
+    undefined,
+    target.nickname,
+  );
 }
 
 // ===== AI 行为 =====

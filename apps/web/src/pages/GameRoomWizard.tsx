@@ -18,10 +18,12 @@ export default function GameRoomWizard() {
   const [minPlayers, setMinPlayers] = useState(6);
   const [maxPlayers, setMaxPlayers] = useState(12);
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
+  const [judgeMode, setJudgeMode] = useState<'ai' | 'owner' | 'none'>('ai');
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
   const selected = GAMES.find((g) => g.id === selectedGame);
+  const isWerewolf = selectedGame === 'werewolf';
 
   const handleCreate = async () => {
     if (!selectedGame || !title.trim()) {
@@ -40,6 +42,7 @@ export default function GameRoomWizard() {
         minPlayers: clampedMin,
         maxPlayers: clampedMax,
         visibility,
+        judgeMode: isWerewolf ? judgeMode : null,
       });
       navigate(`/entertainment/${room.id}`);
     } catch (e: unknown) {
@@ -145,6 +148,36 @@ export default function GameRoomWizard() {
                   <option value="private">私有</option>
                 </select>
               </label>
+
+              {/* 狼人杀法官模式选择 */}
+              {isWerewolf && (
+                <label className="toggle">
+                  <span>
+                    法官模式
+                    <small>
+                      房主可担任法官（不参与游戏，可发言维持秩序，全量可见身份与游戏细节）；或由 AI 法官自动发号施令（天黑请闭眼、天亮请睁眼等）
+                    </small>
+                  </span>
+                  <select
+                    value={judgeMode}
+                    onChange={(e) => setJudgeMode(e.target.value as 'ai' | 'owner' | 'none')}
+                  >
+                    <option value="ai">AI 法官（自动发号施令）</option>
+                    <option value="owner">房主担任法官（不参与游戏）</option>
+                    <option value="none">无法官（房主正常参与游戏）</option>
+                  </select>
+                </label>
+              )}
+              {isWerewolf && judgeMode === 'owner' && (
+                <Notice kind="info">
+                  房主将担任法官，不参与游戏，但可在发言阶段发言维持秩序，并能看到所有玩家的身份和游戏细节（狼人杀了谁、猎人是否开枪、女巫是否用药等）。
+                </Notice>
+              )}
+              {isWerewolf && judgeMode === 'ai' && (
+                <Notice kind="info">
+                  将自动添加一名 AI 法官，负责发号施令（天黑请闭眼、天亮请睁眼、猎人请开枪、女巫是否使用毒药或解药等）。房主作为游戏参与者正常游玩，不知道其他人的身份。
+                </Notice>
+              )}
             </div>
             {problem && <Notice kind="error">{problem}</Notice>}
             <div className="actions">

@@ -56,6 +56,8 @@ export interface UndercoverGameState {
   voteStatus: Record<string, 'voted' | 'abstained'>;
   /** 本轮被淘汰者 */
   eliminatedThisRound?: { playerId: string; role: UndercoverRole };
+  /** 连续平票轮数（僵局检测） */
+  consecutiveTies: number;
   winner?: 'civilians' | 'undercover';
   events: UndercoverGameEvent[];
 }

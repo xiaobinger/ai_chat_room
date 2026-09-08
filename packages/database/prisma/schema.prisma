@@ -42,6 +42,12 @@ enum PlayerRole {
   ai
 }
 
+/// 法官模式：owner=房主担任法官（不参与游戏）；ai=自动 AI 法官
+enum JudgeMode {
+  owner
+  ai
+}
+
 /// 房间生命周期。draft = 向导未走完（flows.md §1 完成信号）；archived = 归档（mvp-spec §3.1）
 enum RoomStatus {
   draft
@@ -217,6 +223,8 @@ model Room {
   minPlayers   Int?
   maxPlayers   Int?
   gameState    Json?
+  /// 狼人杀法官模式：owner=房主担任法官（不参与游戏，可发言维持秩序，全量可见）；ai=自动添加 AI 法官发号施令
+  judgeMode    JudgeMode?
 
   /// 房间级消息序号发号器。用 UPDATE ... SET messageSeq = messageSeq + 1 原子自增，
   /// 避免 count(*) 竞态（并发插入会产生重复序号）

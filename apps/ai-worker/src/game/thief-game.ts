@@ -60,7 +60,7 @@ export class ThiefGame extends BaseGameEngine {
     return results;
   }
 
-  getView(playerId: string | null): Record<string, unknown> {
+  getView(playerId: string | null, _isJudge?: boolean): Record<string, unknown> {
     return getThiefView(this.state, playerId) as Record<string, unknown>;
   }
 

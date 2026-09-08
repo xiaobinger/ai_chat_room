@@ -25,15 +25,21 @@ export function assignRoles(playerIds: string[]): Record<string, WerewolfRole> {
   return assignments;
 }
 
-/** 初始化游戏状态 */
-export function initGameState(players: { playerId: string; nickname: string }[]): GameState {
-  const assignments = assignRoles(players.map((p) => p.playerId));
+/** 初始化游戏状态；judgePlayerId 不参与角色分配（房主担任法官模式） */
+export function initGameState(
+  players: { playerId: string; nickname: string }[],
+  judgePlayerId?: string | null,
+): GameState {
+  const gamePlayers = judgePlayerId
+    ? players.filter((p) => p.playerId !== judgePlayerId)
+    : players;
+  const assignments = assignRoles(gamePlayers.map((p) => p.playerId));
 
   return {
     format: 2,
     phase: 'night',
     round: 1,
-    players: players.map((p) => ({
+    players: gamePlayers.map((p) => ({
       playerId: p.playerId,
       nickname: p.nickname,
       role: assignments[p.playerId],
@@ -50,13 +56,17 @@ export function initGameState(players: { playerId: string; nickname: string }[])
     votes: {},
     deadTonight: [],
     deadToday: [],
+    finalSpeeches: {},
+    finalSpeechStatus: {},
+    judgeMode: undefined,
+    judgePlayerId: judgePlayerId ?? undefined,
     events: [
       {
         id: crypto.randomUUID(),
         round: 1,
         phase: 'night',
         type: 'game_start',
-        content: `天黑请闭眼。本局共 ${players.length} 名玩家，游戏开始！`,
+        content: `天黑请闭眼。本局共 ${gamePlayers.length} 名玩家，游戏开始！`,
         timestamp: Date.now(),
       },
     ],
@@ -198,7 +208,7 @@ function majorityVote(votes: Record<string, string>, state: GameState): string |
   return state.players.find((p) => p.playerId === picked)?.playerId;
 }
 
-/** 结算夜晚：击杀/毒杀/猎人标记 → 进入白天 */
+/** 结算夜晚：击杀/毒杀/猎人标记 → 有人死亡则进入临终遗言阶段，否则直接进入白天 */
 export function resolveNight(state: GameState): void {
   if (state.phase !== 'night') throw new GameError('not_night', '当前不是夜晚阶段');
 
@@ -216,16 +226,12 @@ export function resolveNight(state: GameState): void {
   }
   state.deadTonight = deaths;
 
-  state.phase = 'day';
-  state.speechStatus = {};
-  state.dayMessages = [];
+  // 重置夜晚状态
   state.wolfVotes = {};
   state.seerCheckedTonight = [];
   state.witchTonight = undefined;
   state.witchPoisonTarget = undefined;
   state.nightVictim = undefined;
-
-  logEvent(state, 'phase_change', `第 ${state.round} 天 天亮了`);
 
   if (deaths.length > 0) {
     const names = deaths.map((id) => state.players.find((p) => p.playerId === id)?.nickname ?? '未知').join('、');
@@ -236,11 +242,27 @@ export function resolveNight(state: GameState): void {
       return p?.role === 'hunter' && id !== poisonTarget;
     });
     if (hunterDeath) state.pendingHunter = hunterDeath;
+
+    // 进入临终遗言阶段
+    state.phase = 'final_speech';
+    state.finalSpeechStatus = {};
+    logEvent(state, 'phase_change', `天亮了。${names} 可以发表临终遗言。`);
   } else {
     logEvent(state, 'player_death', saved ? '女巫救下了今晚被刀的人，平安夜！' : '昨晚是平安夜，无人死亡');
+    // 无人死亡，直接进入白天
+    enterDayPhase(state);
   }
 
   checkGameEnd(state);
+}
+
+/** 进入白天阶段（重置白天状态） */
+export function enterDayPhase(state: GameState): void {
+  state.phase = 'day';
+  state.speechStatus = {};
+  state.dayMessages = [];
+  state.finalSpeechStatus = {};
+  logEvent(state, 'phase_change', `第 ${state.round} 天 天亮了`);
 }
 
 // ===== 白天动作 =====
@@ -403,8 +425,125 @@ export function checkGameEnd(state: GameState): void {
   }
 }
 
-/** 玩家视角（隐藏他人身份；结束时全量公开） */
-export function getPlayerView(state: GameState, playerId: string | null) {
+// ===== 临终遗言 =====
+
+/** 玩家发表临终遗言（仅 final_speech 阶段，刚死亡的玩家） */
+export function applyFinalSpeech(state: GameState, playerId: string, content: string): void {
+  const player = findPlayer(state, playerId);
+  if (state.phase !== 'final_speech') throw new GameError('not_final_speech', '当前不是临终遗言阶段');
+  if (player.isAlive) throw new GameError('player_alive', '只有出局玩家可以发表临终遗言');
+  if (!state.deadTonight.includes(playerId) && !state.deadToday.includes(playerId)) {
+    throw new GameError('not_dead_this_round', '只有本轮出局玩家可以发表临终遗言');
+  }
+  if (state.finalSpeechStatus[playerId]) throw new GameError('already_spoken', '已发表过临终遗言');
+
+  const text = content.trim().slice(0, 200);
+  if (!text) throw new GameError('empty_speech', '遗言不能为空');
+
+  state.finalSpeechStatus[playerId] = 'spoken';
+  state.finalSpeeches[playerId] = text;
+  logEvent(state, 'final_speech', `${player.nickname} 的临终遗言：${text}`, playerId);
+}
+
+/** 跳过临终遗言 */
+export function applyFinalSpeechSkip(state: GameState, playerId: string): void {
+  const player = findPlayer(state, playerId);
+  if (state.phase !== 'final_speech') throw new GameError('not_final_speech', '当前不是临终遗言阶段');
+  if (player.isAlive) throw new GameError('player_alive', '只有出局玩家可以发表临终遗言');
+  if (!state.deadTonight.includes(playerId) && !state.deadToday.includes(playerId)) {
+    throw new GameError('not_dead_this_round', '只有本轮出局玩家可以发表临终遗言');
+  }
+  if (state.finalSpeechStatus[playerId]) throw new GameError('already_spoken', '已发表过临终遗言');
+
+  state.finalSpeechStatus[playerId] = 'skipped';
+  logEvent(state, 'final_speech', `${player.nickname} 选择不说遗言`, playerId);
+}
+
+/** 临终遗言阶段结束 → 进入白天 */
+export function resolveFinalSpeech(state: GameState): void {
+  if (state.phase !== 'final_speech') throw new GameError('not_final_speech', '当前不是临终遗言阶段');
+
+  // 所有本轮死亡玩家都已发言或跳过
+  const deadThisRound = [...state.deadTonight, ...state.deadToday];
+  const allDone = deadThisRound.every((id) => state.finalSpeechStatus[id]);
+  if (!allDone) throw new GameError('not_all_spoken', '还有死亡玩家未发表遗言');
+
+  enterDayPhase(state);
+}
+
+// ===== 法官 =====
+
+/** 法官发言（维持秩序） */
+export function applyJudgeSpeak(state: GameState, judgeId: string, content: string): void {
+  if (state.judgePlayerId !== judgeId) throw new GameError('not_judge', '你不是法官');
+  const text = content.trim().slice(0, 200);
+  if (!text) throw new GameError('empty_speech', '发言不能为空');
+  const judge = state.players.find((p) => p.playerId === judgeId);
+  logEvent(state, 'judge_speak', `法官：${text}`, judgeId, undefined);
+  void judge;
+}
+
+/** AI 法官发号施令：根据当前阶段生成广播词（天黑请闭眼、天亮请睁眼等） */
+export function aiJudgeBroadcast(state: GameState): string | null {
+  switch (state.phase) {
+    case 'night':
+      return state.round === 1 ? '天黑请闭眼。狼人请睁眼并选择击杀目标。' : `第 ${state.round} 夜，天黑请闭眼。狼人请选择击杀目标。`;
+    case 'final_speech':
+      return '天亮了。请出局的玩家发表临终遗言。';
+    case 'day': {
+      const aliveCount = state.players.filter((p) => p.isAlive).length;
+      return `天亮了，请睁眼。本局还剩 ${aliveCount} 名玩家，请依次发言。`;
+    }
+    case 'vote':
+      return '发言结束，请开始投票放逐嫌疑人。';
+    case 'finished':
+      return state.winner === 'werewolf' ? '游戏结束，狼人阵营获胜！' : '游戏结束，好人阵营获胜！';
+    default:
+      return null;
+  }
+}
+
+/** 法官视角：全量公开（所有身份、所有事件含角色、女巫药剂、预言家查验等） */
+export function getJudgeView(state: GameState): Record<string, unknown> {
+  return {
+    format: state.format,
+    phase: state.phase,
+    round: state.round,
+    game: 'werewolf',
+    isJudge: true,
+    judgeMode: state.judgeMode,
+    judgePlayerId: state.judgePlayerId,
+    players: state.players.map((p) => ({
+      playerId: p.playerId,
+      nickname: p.nickname,
+      isAlive: p.isAlive,
+      role: p.role,
+      isMe: false,
+    })),
+    myRole: null,
+    speechStatus: state.speechStatus,
+    dayMessages: state.dayMessages,
+    voteStatus: state.voteStatus,
+    votes: state.votes,
+    deadTonight: state.deadTonight,
+    deadToday: state.deadToday,
+    finalSpeeches: state.finalSpeeches,
+    finalSpeechStatus: state.finalSpeechStatus,
+    winner: state.winner,
+    pendingHunter: state.pendingHunter,
+    wolfVotes: state.wolfVotes,
+    seerChecks: state.seerChecks,
+    witchPotions: state.witchPotions,
+    witchTonight: state.witchTonight,
+    witchPoisonTarget: state.witchPoisonTarget,
+    nightVictim: state.nightVictim,
+    events: state.events,
+  };
+}
+
+/** 玩家视角（隐藏他人身份；结束时全量公开）；isJudge=true 时返回法官全量视角 */
+export function getPlayerView(state: GameState, playerId: string | null, isJudge = false) {
+  if (isJudge) return getJudgeView(state);
   const me = playerId ? state.players.find((p) => p.playerId === playerId) : undefined;
   const finished = state.phase === 'finished';
 

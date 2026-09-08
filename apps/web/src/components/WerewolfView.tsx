@@ -1,4 +1,4 @@
-import { Crosshair, Eye, FlaskConical, Moon, PawPrint, Shield } from 'lucide-react';
+import { Crosshair, Eye, FlaskConical, Gavel, Moon, PawPrint, Shield, MessageSquareQuote } from 'lucide-react';
 import {
   Countdown,
   PhaseBadge,
@@ -32,6 +32,9 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
 };
 
 interface WerewolfViewState extends GameViewState {
+  isJudge?: boolean;
+  judgeMode?: 'owner' | 'ai' | null;
+  judgePlayerId?: string | null;
   wolfTeammates?: { playerId: string; nickname: string; isAlive: boolean }[];
   seerChecks?: { round: number; targetName: string; isWerewolf: boolean }[];
   witchPotions?: { save: boolean; poison: boolean };
@@ -45,6 +48,13 @@ interface WerewolfViewState extends GameViewState {
   canShoot?: boolean;
   deadTonight?: string[];
   deadToday?: string[];
+  finalSpeeches?: Record<string, string>;
+  finalSpeechStatus?: Record<string, 'spoken' | 'skipped'>;
+  // 法官视角下的完整秘密
+  wolfVotes?: Record<string, string>;
+  witchTonight?: 'save' | 'poison' | 'pass' | undefined;
+  witchPoisonTarget?: string | null;
+  nightVictim_full?: string | null;
 }
 
 export function WerewolfView({
@@ -66,10 +76,11 @@ export function WerewolfView({
   const myRole = view.myRole;
   const myRoleLabel = myRole ? ROLE_LABELS[myRole] : undefined;
   const iAmWerewolf = myRole === 'werewolf';
+  const isJudge = Boolean(view.isJudge);
 
   const alivePlayers = view.players.filter((p) => p.isAlive);
   const me = view.players.find((p) => p.playerId === myPlayerId);
-  const canAct = alive && !finished;
+  const canAct = alive && !finished && !isJudge;
 
   return (
     <div className="game-view werewolf">
@@ -86,7 +97,60 @@ export function WerewolfView({
         />
       )}
 
-      {myRoleLabel && !finished && (
+      {/* 法官标识 */}
+      {isJudge && !finished && (
+        <InfoBlock>
+          <Gavel size={14} /> 你是法官（{view.judgeMode === 'owner' ? '房主担任' : 'AI 担任'}）
+          <small style={{ marginLeft: 8 }}>你可以看到所有玩家的身份和游戏细节，在发言阶段可发言维持秩序</small>
+        </InfoBlock>
+      )}
+
+      {/* 法官全量身份表 */}
+      {isJudge && !finished && (
+        <div className="game-section judge-roles">
+          <h4>
+            <Eye size={15} /> 全员身份（法官可见）
+          </h4>
+          <div className="player-chips">
+            {view.players.map((p) => (
+              <div key={p.playerId} className={`player-chip ${!p.isAlive ? 'dead' : ''}`}>
+                <span className="player-avatar">{p.nickname.slice(0, 1)}</span>
+                <span className="player-name">{p.nickname}</span>
+                {p.role && <span className="chip-tag role">{ROLE_LABELS[p.role] ?? p.role}</span>}
+                {!p.isAlive && <span className="chip-tag dead">出局</span>}
+              </div>
+            ))}
+          </div>
+          {/* 法官秘密细节 */}
+          <div className="judge-secrets">
+            {view.nightVictim != null && (
+              <p>
+                <b>今晚被刀：</b>
+                {view.nightVictim || '（暂无）'}
+              </p>
+            )}
+            {view.witchPotions && (
+              <p>
+                <b>女巫药剂：</b>
+                解药 {view.witchPotions.save ? '✓' : '✗'} · 毒药 {view.witchPotions.poison ? '✓' : '✗'}
+                {view.witchTonight ? ` · 今晚${view.witchTonight === 'save' ? '使用了解药' : view.witchTonight === 'poison' ? '使用了毒药' : '未用药'}` : ''}
+              </p>
+            )}
+            {view.seerChecks && view.seerChecks.length > 0 && (
+              <p>
+                <b>预言家查验记录：</b>
+                {view.seerChecks.map((c, i) => (
+                  <span key={i}>
+                    {i > 0 && '；'}第{c.round}轮 {c.targetName} = {c.isWerewolf ? '狼人' : '好人'}
+                  </span>
+                ))}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {myRoleLabel && !finished && !isJudge && (
         <RoleCard title="我的身份" roleName={myRoleLabel} description={ROLE_DESCRIPTIONS[myRole ?? '']} accent={iAmWerewolf ? 'wolf' : ''} />
       )}
 
@@ -189,11 +253,12 @@ export function WerewolfView({
             </div>
           )}
 
-          {(myRole === 'villager' || myRole === 'hunter' || view.myNightActionDone || view.witchActed) && (
+          {(myRole === 'villager' || myRole === 'hunter' || view.myNightActionDone || view.witchActed) && !isJudge && (
             <p className="hint">夜深了，等待其他玩家行动……</p>
           )}
-          {me && !me.isAlive && <p className="hint">你已出局，以上帝视角观战。</p>}
-          {!myPlayerId && <p className="hint">观战中……</p>}
+          {isJudge && <p className="hint">法官观战中，等待夜晚行动结束……</p>}
+          {me && !me.isAlive && !isJudge && <p className="hint">你已出局，以上帝视角观战。</p>}
+          {!myPlayerId && !isJudge && <p className="hint">观战中……</p>}
         </div>
       )}
 
@@ -219,10 +284,73 @@ export function WerewolfView({
         </div>
       )}
 
+      {/* 临终遗言阶段 */}
+      {view.phase === 'final_speech' && !finished && (
+        <div className="action-panel final-speech">
+          <h4>
+            <MessageSquareQuote size={15} /> 临终遗言
+          </h4>
+          <p className="hint">出局的玩家可以发表临终遗言，增加游戏趣味。</p>
+
+          {/* 法官发言 */}
+          {isJudge && (
+            <SpeechInput
+              placeholder="法官发言：维持游戏秩序、提醒规则（Enter 发送）"
+              disabled={false}
+              onSpeak={(content) => void act('judge_speak', { content })}
+            />
+          )}
+
+          {/* 死亡玩家的遗言输入 */}
+          {(() => {
+            const deadThisRound = [...(view.deadTonight ?? []), ...(view.deadToday ?? [])];
+            const myDeath = deadThisRound.find((id) => id === myPlayerId);
+            if (myDeath && !view.finalSpeechStatus?.[myPlayerId ?? '']) {
+              return (
+                <SpeechInput
+                  placeholder="发表你的临终遗言（Enter 发送）"
+                  disabled={false}
+                  onSpeak={(content) => void act('final_speech', { content })}
+                  onSkip={() => void act('final_speech_skip')}
+                  skipLabel="放弃遗言"
+                />
+              );
+            }
+            return null;
+          })()}
+
+          {/* 已发表的遗言 */}
+          {view.finalSpeeches && Object.entries(view.finalSpeeches).length > 0 && (
+            <div className="day-messages">
+              {Object.entries(view.finalSpeeches).map(([pid, content]) => {
+                const player = view.players.find((p) => p.playerId === pid);
+                return (
+                  <div key={pid} className="day-message final-speech-item">
+                    <b>{player?.nickname ?? pid}（遗言）：</b>
+                    <span>{content}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {(!view.finalSpeeches || Object.keys(view.finalSpeeches).length === 0) && (
+            <p className="hint">等待出局玩家发表遗言……</p>
+          )}
+        </div>
+      )}
+
       {/* 白天发言 */}
       {view.phase === 'day' && !finished && (
         <div className="action-panel day">
           <h4>白天 · 自由发言</h4>
+          {isJudge && (
+            <SpeechInput
+              placeholder="法官发言：维持游戏秩序（Enter 发送）"
+              disabled={false}
+              onSpeak={(content) => void act('judge_speak', { content })}
+            />
+          )}
           {canAct && !view.speechStatus?.[myPlayerId ?? ''] && (
             <SpeechInput
               placeholder="发表你的推理与看法（Enter 发送）"
@@ -266,7 +394,7 @@ export function WerewolfView({
           players={view.players}
           speechStatus={view.phase === 'day' ? view.speechStatus : undefined}
           voteStatus={view.phase === 'vote' ? view.voteStatus : undefined}
-          showRoles={finished}
+          showRoles={finished || isJudge}
         />
       </div>
 

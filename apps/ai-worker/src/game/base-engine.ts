@@ -20,7 +20,7 @@ export abstract class BaseGameEngine {
   abstract phaseDeadlineMs(): number;
   abstract handleAction(action: EngineAction): void;
   abstract autoAct(playerId: string): void;
-  abstract getView(playerId: string | null): Record<string, unknown>;
+  abstract getView(playerId: string | null, isJudge?: boolean): Record<string, unknown>;
   abstract getState(): Record<string, unknown>;
   abstract isFinished(): boolean;
 

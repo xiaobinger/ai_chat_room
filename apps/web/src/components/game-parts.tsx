@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Crown, Moon, Skull, Sun, Timer, Vote as VoteIcon, Users } from 'lucide-react';
+import { Crown, MessageSquareQuote, Moon, Skull, Sun, Timer, Vote as VoteIcon, Users } from 'lucide-react';
 
 // ===== 通用视角类型（各游戏字段按需取用） =====
 
@@ -82,6 +82,7 @@ export function PhaseBadge({ phase, round }: { phase: string; round: number }) {
     day: { name: '白天', icon: Sun, cls: 'day' },
     vote: { name: '投票', icon: VoteIcon, cls: 'vote' },
     voting: { name: '投票', icon: VoteIcon, cls: 'vote' },
+    final_speech: { name: '临终遗言', icon: MessageSquareQuote, cls: 'day' },
     describing: { name: '描述', icon: Sun, cls: 'day' },
     investigation: { name: '调查讨论', icon: Sun, cls: 'day' },
     introduction: { name: '自我介绍', icon: Sun, cls: 'day' },

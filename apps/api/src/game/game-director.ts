@@ -21,6 +21,14 @@ export interface DirectorPlayerRow {
   role: string;
 }
 
+export interface JudgeOptions {
+  judgeMode?: 'owner' | 'ai' | null;
+  /** owner 模式：房主 gamePlayerId（不在游戏玩家列表中）；ai 模式：AI 法官 gamePlayerId */
+  judgePlayerId?: string | null;
+  /** owner 模式：房主 userId（用于判断请求者是否为法官） */
+  ownerUserId?: string | null;
+}
+
 /**
  * 游戏导演：包装引擎，负责
  * - 推进循环（AI 自动行动，人类等待）
@@ -42,12 +50,18 @@ export class GameDirector {
   private deadlineTimer: NodeJS.Timeout | null = null;
   /** 当前阶段截止时间（epoch ms），随状态一并下发给前端做倒计时 */
   private deadlineAt: number | null = null;
+  /** 法官模式信息 */
+  private judgeMode: 'owner' | 'ai' | null = null;
+  private judgePlayerId: string | null = null;
+  /** owner 模式下房主的 userId（用于判断请求者是否为法官） */
+  private ownerUserId: string | null = null;
 
   private constructor(
     roomId: string,
     gameType: GameTypeStr,
     players: DirectorPlayerRow[],
     engine: BaseGameEngine,
+    judgeOptions?: JudgeOptions,
   ) {
     this.roomId = roomId;
     this.gameType = gameType;
@@ -61,12 +75,20 @@ export class GameDirector {
       if (p.userId) this.userIdByPlayerId.set(p.id, p.userId);
     }
     this.engine = engine;
+    this.judgeMode = judgeOptions?.judgeMode ?? null;
+    this.judgePlayerId = judgeOptions?.judgePlayerId ?? null;
+    this.ownerUserId = judgeOptions?.ownerUserId ?? null;
   }
 
   /** 创建新游戏 */
-  static create(roomId: string, gameType: GameTypeStr, players: DirectorPlayerRow[]): GameDirector {
-    const engine = buildEngine(gameType, players, undefined);
-    const director = new GameDirector(roomId, gameType, players, engine);
+  static create(
+    roomId: string,
+    gameType: GameTypeStr,
+    players: DirectorPlayerRow[],
+    judgeOptions?: JudgeOptions,
+  ): GameDirector {
+    const engine = buildEngine(gameType, players, undefined, judgeOptions);
+    const director = new GameDirector(roomId, gameType, players, engine, judgeOptions);
     GameDirector.active.set(roomId, director);
     return director;
   }
@@ -115,6 +137,12 @@ export class GameDirector {
     return null;
   }
 
+  /** 检查请求用户是否为法官 */
+  isJudge(userId: string): boolean {
+    if (this.judgeMode !== 'owner') return false;
+    return this.ownerUserId !== null && userId === this.ownerUserId;
+  }
+
   getDeadlineAt(): number | null {
     return this.deadlineAt;
   }
@@ -126,11 +154,27 @@ export class GameDirector {
   /** 玩家（或观众）视角 */
   getView(userId: string | null): Record<string, unknown> {
     const playerId = userId ? this.getPlayerIdByUser(userId) : null;
-    return this.engine.getView(playerId);
+    const isJudge = userId ? this.isJudge(userId) : false;
+    return this.engine.getView(playerId, isJudge);
   }
 
   /** 处理人类动作：校验后交给引擎，然后恢复推进 */
   async handleUserAction(userId: string, body: { type: string; targetId?: string; content?: string }): Promise<void> {
+    // 法官可以发言
+    if (this.isJudge(userId)) {
+      const action: EngineAction = {
+        type: 'judge_speak' as any,
+        playerId: this.judgePlayerId ?? '',
+        targetId: body.targetId,
+        content: body.content,
+      };
+      this.engine.handleAction(action);
+      await this.persist();
+      this.broadcastState();
+      void this.tick();
+      return;
+    }
+
     const playerId = this.getPlayerIdByUser(userId);
     if (!playerId) throw new GameError('not_a_player', '你不是本局玩家');
     const action: EngineAction = {
@@ -276,6 +320,7 @@ function buildEngine(
   gameType: GameTypeStr,
   players: DirectorPlayerRow[],
   state: Record<string, unknown> | undefined,
+  judgeOptions?: JudgeOptions,
 ): BaseGameEngine {
   const infos: GamePlayerInfo[] = players.map((p) => ({
     playerId: p.id,
@@ -285,7 +330,10 @@ function buildEngine(
   }));
   switch (gameType) {
     case 'werewolf':
-      return new WerewolfGame(infos, state);
+      return new WerewolfGame(infos, state, {
+        judgeMode: judgeOptions?.judgeMode ?? null,
+        judgePlayerId: judgeOptions?.judgePlayerId ?? null,
+      });
     case 'who_is_the_thief':
       return new ThiefGame(infos, state);
     case 'murder_mystery':

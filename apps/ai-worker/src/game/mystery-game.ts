@@ -53,7 +53,7 @@ export class MysteryGame extends BaseGameEngine {
     return results;
   }
 
-  getView(playerId: string | null): Record<string, unknown> {
+  getView(playerId: string | null, _isJudge?: boolean): Record<string, unknown> {
     return getPlayerView(this.state, playerId) as Record<string, unknown>;
   }
 
