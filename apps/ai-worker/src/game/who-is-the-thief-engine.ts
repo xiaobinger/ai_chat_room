@@ -3,7 +3,6 @@ import type {
   ThiefPlayerState,
   ThiefRole,
   InvestigationAction,
-  ThiefGameEvent,
 } from './who-is-the-thief-types';
 import {
   STOLEN_ITEMS,
@@ -212,7 +211,7 @@ export function resolveThiefVote(state: ThiefGameState): ThiefGameState {
 
   // 统计票数
   const voteCounts: Record<string, number> = {};
-  for (const [voterId, targetId] of Object.entries(next.votes)) {
+  for (const [, targetId] of Object.entries(next.votes)) {
     voteCounts[targetId] = (voteCounts[targetId] ?? 0) + 1;
   }
 

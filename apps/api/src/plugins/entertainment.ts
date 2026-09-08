@@ -4,11 +4,11 @@ import { NotFound, authedUser, roomAccess } from '../auth/guards';
 import { roomGateway } from '../ws/room-gateway';
 import { WerewolfGameRunner, type GamePlayerInfo } from '../../../ai-worker/src/game/game-runner';
 import { ThiefGameRunner } from '../../../ai-worker/src/game/thief-game-runner';
+import { MysteryGameRunner } from '../../../ai-worker/src/game/mystery-runner';
 import type { GameAction as WerewolfAction } from '../../../ai-worker/src/game/types';
 import type { InvestigationAction as ThiefAction } from '../../../ai-worker/src/game/who-is-the-thief-types';
 
 type WerewolfActionType = WerewolfAction['type'];
-type ThiefActionType = ThiefAction['type'];
 type InvestigationActionType = ThiefAction['type'];
 
 const GAME_CONFIGS = {
@@ -18,7 +18,7 @@ const GAME_CONFIGS = {
 };
 
 /** 活跃游戏实例 */
-const activeGames = new Map<string, WerewolfGameRunner | ThiefGameRunner>();
+const activeGames = new Map<string, WerewolfGameRunner | ThiefGameRunner | MysteryGameRunner>();
 
 export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
   /** 娱乐房间列表 */
@@ -242,9 +242,11 @@ export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
       isAi: p.role === 'ai',
     }));
 
-    let runner: WerewolfGameRunner | ThiefGameRunner;
+    let runner: WerewolfGameRunner | ThiefGameRunner | MysteryGameRunner;
     if (room.gameType === 'who_is_the_thief') {
       runner = new ThiefGameRunner(players);
+    } else if (room.gameType === 'murder_mystery') {
+      runner = new MysteryGameRunner(players);
     } else {
       runner = new WerewolfGameRunner(players);
     }
@@ -273,6 +275,8 @@ export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
       setTimeout(() => void processNightPhase(roomId), 1000);
     } else if (room.gameType === 'who_is_the_thief') {
       setTimeout(() => void processThiefInvestigation(roomId), 1000);
+    } else if (room.gameType === 'murder_mystery') {
+      setTimeout(() => void processMysteryPhase(roomId), 1000);
     }
 
     return reply.status(200).send({ gameStatus: 'playing', gameState });
@@ -389,7 +393,7 @@ export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
   fastify.post('/rooms/:roomId/action', async (request, reply) => {
     const { roomId } = request.params as { roomId: string };
     const user = authedUser(request);
-    const body = request.body as { type: string; targetId?: string; content?: string };
+    const body = request.body as { type: string; targetId?: string; content?: string; clueId?: string };
 
     const runner = activeGames.get(roomId);
     if (!runner) return reply.status(400).send({ error: 'game_not_active' });
@@ -407,6 +411,14 @@ export const entertainmentPlugin: FastifyPluginAsync = async (fastify) => {
         actorId: membership.id,
         targetId: body.targetId,
         content: body.content || '',
+      });
+    } else if (runner instanceof MysteryGameRunner) {
+      runner.handlePlayerAction({
+        type: body.type,
+        playerId: membership.id,
+        targetId: body.targetId,
+        content: body.content,
+        clueId: body.clueId,
       });
     } else if (runner instanceof WerewolfGameRunner) {
       runner.handlePlayerAction({
@@ -536,4 +548,55 @@ async function processThiefInvestigation(roomId: string) {
 
   // 进入下一轮
   setTimeout(() => void processThiefInvestigation(roomId), 2000);
+}
+
+/** 处理剧本杀阶段 */
+async function processMysteryPhase(roomId: string) {
+  const runner = activeGames.get(roomId);
+  if (!runner || !(runner instanceof MysteryGameRunner)) return;
+
+  const state = runner.getState();
+
+  // 根据当前阶段执行不同逻辑
+  switch (state.phase) {
+    case 'introduction':
+      await runner.processIntroductions();
+      runner.advancePhase();
+      break;
+    case 'investigation':
+      await runner.processInvestigation();
+      runner.advancePhase();
+      break;
+    case 'discussion':
+      await runner.processDiscussion();
+      runner.advancePhase();
+      break;
+    case 'voting':
+      await runner.processAccusations();
+      await runner.processAiVotes();
+      runner.resolveVotes();
+      break;
+    case 'reveal':
+      // 游戏结束
+      await prisma.room.update({ where: { id: roomId }, data: { gameStatus: 'finished' } });
+      activeGames.delete(roomId);
+      return;
+  }
+
+  // 更新数据库
+  await prisma.room.update({
+    where: { id: roomId },
+    data: { gameState: runner.getState() as object },
+  });
+
+  // 检查游戏是否结束
+  const newState = runner.getState();
+  if (newState.phase === 'reveal') {
+    await prisma.room.update({ where: { id: roomId }, data: { gameStatus: 'finished' } });
+    activeGames.delete(roomId);
+    return;
+  }
+
+  // 进入下一阶段
+  setTimeout(() => void processMysteryPhase(roomId), 2000);
 }

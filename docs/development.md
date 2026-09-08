@@ -180,11 +180,11 @@ PM2 配置在 `ecosystem.config.cjs`（双进程：`tianma-api` + `tianma-worker
 | `POST` | `/entertainment/rooms/:roomId/ai` | 房主 | 添加 AI 玩家 |
 | `POST` | `/entertainment/rooms/:roomId/start` | 房主 | 开始游戏 |
 | `GET` | `/entertainment/rooms/:roomId/state` | 成员 | 获取游戏状态 |
-| `POST` | `/entertainment/rooms/:roomId/action` | 玩家 | 游戏动作 |
+| `POST` | `/entertainment/rooms/:roomId/action` | 玩家 | 游戏动作（含 clueId） |
 | `GET` | `/entertainment/rooms/:roomId/review` | 成员 | 获取复盘数据 |
+| `GET` | `/entertainment/stats` | 登录 | 获取用户游戏统计 |
 
 ## 已知未完成
 
-- 剧本杀、谁是凶手的游戏逻辑待实现
-- 房间搜索/筛选功能待实现
-- 游戏统计（胜率/场次）待实现
+- 剧本杀游戏：前端 UI 适配（目前复用通用 GameRoom 页面）
+- 更多剧本场景和角色卡扩展

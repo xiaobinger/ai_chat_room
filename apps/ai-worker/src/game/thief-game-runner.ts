@@ -1,4 +1,4 @@
-import type { ThiefGameState, InvestigationAction, ThiefPlayerState } from './who-is-the-thief-types';
+import type { ThiefGameState, InvestigationAction } from './who-is-the-thief-types';
 import {
   initThiefGameState,
   processInvestigationAction,
@@ -6,7 +6,6 @@ import {
   resolveThiefVote,
   checkThiefGameEnd,
   nextInvestigationRound,
-  getAlivePlayers,
   generateInvestigationSpeech,
   decideThiefVote,
 } from './who-is-the-thief-engine';
@@ -56,7 +55,6 @@ export class ThiefGameRunner {
   /** 执行 AI 调查阶段 */
   async processInvestigation(): Promise<void> {
     const aiPlayers = this.getAiPlayers();
-    const alivePlayers = getAlivePlayers(this.state);
 
     for (const ai of aiPlayers) {
       const aiState = this.state.players.find((p) => p.playerId === ai.playerId);
@@ -75,7 +73,6 @@ export class ThiefGameRunner {
   /** 执行 AI 投票 */
   async processAiVotes(): Promise<void> {
     const aiPlayers = this.getAiPlayers();
-    const alivePlayers = getAlivePlayers(this.state);
 
     for (const ai of aiPlayers) {
       const aiState = this.state.players.find((p) => p.playerId === ai.playerId);

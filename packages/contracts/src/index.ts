@@ -621,6 +621,10 @@ export const WSEventSchema = z.discriminatedUnion('type', [
     type: z.literal('game_special_event'),
     payload: z.record(z.unknown()),
   }),
+  z.object({
+    type: z.literal('game_clue_found'),
+    payload: z.record(z.unknown()),
+  }),
 ]);
 export type WSEvent = z.infer<typeof WSEventSchema>;
 
