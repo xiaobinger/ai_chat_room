@@ -95,3 +95,17 @@ cite,.cite-list{display:block}
 .game-state{background:#0d0e13;border-radius:8px;padding:16px;font-size:11px;color:#8e90a0;max-height:300px;overflow:auto;white-space:pre-wrap}
 .pick p{color:#858793;font-size:12px;margin:8px 0}
 .pick small{color:#777;font-size:10px}
+
+/* 身份标识徽章 */
+.id-badge{display:inline-block;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;margin-left:6px;vertical-align:middle}
+.id-badge.owner{background:#ff758c;color:#fff}
+.id-badge.ai{background:#2a2440;color:#ad9eff}
+.id-badge.moderator{background:#7457ff;color:#fff}
+.id-badge.member{background:#20212a;color:#8e90a0}
+.id-badge.observer{background:#20212a;color:#666}
+.id-badge.werewolf{background:#8b0000;color:#fff}
+.id-badge.villager{background:#1a3a1a;color:#5ee9a3}
+.id-badge.seer{background:#4a0080;color:#fff}
+.id-badge.witch{background:#8b008b;color:#fff}
+.id-badge.hunter{background:#006400;color:#fff}
+.id-badge.game-role{position:absolute;top:-4px;right:-4px;font-size:8px;padding:1px 4px}

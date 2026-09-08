@@ -11,6 +11,7 @@ interface GamePlayer {
   nickname: string;
   role: 'human' | 'ai';
   isAlive: boolean;
+  gameData: Record<string, unknown> | null;
   user?: { id: string; displayName: string; avatarColor: string | null };
   profile?: { id: string; name: string; avatarColor: string | null };
 }
@@ -135,23 +136,40 @@ export default function GameRoom() {
               <span>玩家列表</span>
               <b>{room.gamePlayers.length}</b>
             </div>
-            {room.gamePlayers.map((p) => (
-              <div className="agent" key={p.id}>
-                <span
-                  className="avatar"
-                  style={{ background: p.profile?.avatarColor ?? p.user?.avatarColor ?? '#6f52d9' }}
-                >
-                  {p.nickname.slice(0, 1)}
-                </span>
-                <div>
-                  <b>
-                    {p.nickname}
-                    {p.role === 'ai' && <span className="ai-badge">AI</span>}
-                  </b>
-                  <small>{p.isAlive ? '存活' : '已出局'}</small>
+            {room.gamePlayers.map((p) => {
+              const isOwner = p.userId === room.owner.id;
+              const gameRole = p.gameData ? (p.gameData as { gameRole?: string }).gameRole : undefined;
+              const gameRoleLabels: Record<string, string> = {
+                werewolf: '狼人',
+                villager: '村民',
+                seer: '预言家',
+                witch: '女巫',
+                hunter: '猎人',
+              };
+              return (
+                <div className="agent" key={p.id}>
+                  <span
+                    className="avatar"
+                    style={{ background: p.profile?.avatarColor ?? p.user?.avatarColor ?? '#6f52d9' }}
+                  >
+                    {p.nickname.slice(0, 1)}
+                  </span>
+                  <div>
+                    <b>
+                      {p.nickname}
+                      {p.role === 'ai' && <span className="id-badge ai">AI</span>}
+                      {isOwner && <span className="id-badge owner">房主</span>}
+                    </b>
+                    <small>
+                      {p.isAlive ? '存活' : '已出局'}
+                      {gameRole && gameRoleLabels[gameRole] && (
+                        <span className={`id-badge game-role ${gameRole}`}>{gameRoleLabels[gameRole]}</span>
+                      )}
+                    </small>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

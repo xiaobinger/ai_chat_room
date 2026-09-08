@@ -553,7 +553,10 @@ export default function ChatRoom() {
                 {role.name.slice(0, 1)}
               </span>
               <div>
-                <b>{role.name}</b>
+                <b>
+                  {role.name}
+                  <span className="id-badge ai">AI</span>
+                </b>
                 <small>{runStateLabel(state)}</small>
               </div>
               {room.isOwner && state !== 'removed' && (
@@ -668,13 +671,16 @@ export default function ChatRoom() {
           {room.members.map((member, index) => (
             <div className="agent" key={member.id}>
               <span className="avatar" style={{ background: index === 0 ? '#6f52d9' : '#2871c9' }}>
-                {member.user.displayName.slice(0, 1)}
+                {member.nickname ? member.nickname.slice(0, 1) : member.user.displayName.slice(0, 1)}
               </span>
               <div>
-                <b>{member.user.displayName}</b>
+                <b>
+                  {member.nickname || member.user.displayName}
+                  {member.user.id === room.ownerId && <span className="id-badge owner">房主</span>}
+                </b>
                 <small>
-                  {member.user.id === room.ownerId
-                    ? '房主'
+                  {member.nickname && member.nickname !== member.user.displayName
+                    ? member.user.displayName
                     : member.intent === 'discuss'
                       ? '参与讨论'
                       : '潜水观察'}
