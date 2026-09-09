@@ -116,6 +116,8 @@ export function initMysteryState(
     votes: {},
     voteStatus: {},
     scenarioTitle: scenario.title,
+    observations: [],
+    secretChats: [],
     events: [
       {
         id: crypto.randomUUID(),

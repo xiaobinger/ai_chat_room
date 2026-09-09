@@ -89,6 +89,14 @@ export interface MysteryGameState {
   winner?: 'murderer' | 'detectives';
   events: MysteryGameEvent[];
   scenarioTitle?: string;            // 剧本标题（用于 AI 发言引用）
+  /** 侦探/警察的观察记录 */
+  observations: DetectiveObservation[];
+  /** 悄悄话记录 */
+  secretChats: SecretConversation[];
+  /** 凶手独白（reveal 阶段生成） */
+  monologue?: MurdererMonologue;
+  /** 详细复盘（reveal 阶段生成） */
+  replay?: DetailedReplay;
 }
 
 export interface DiscussionEntry {
@@ -104,11 +112,157 @@ export interface MysteryGameEvent {
   id: string;
   round: number;
   phase: MysteryPhase;
-  type: 'phase_change' | 'clue_discovered' | 'player_action' | 'vote_result' | 'game_start' | 'game_end' | 'roleplay';
+  type: 'phase_change' | 'clue_discovered' | 'player_action' | 'vote_result' | 'game_start' | 'game_end' | 'roleplay' | 'observation' | 'secret_chat' | 'monologue';
   actorName?: string;
   characterName?: string;
   content: string;
   timestamp: number;
+  /** 仅特定角色可见（如侦探调查结果仅侦探可见） */
+  visibleTo?: string[];
+}
+
+/** 侦探/警察的特殊观察能力：观察其他玩家的行为、小动作 */
+export interface DetectiveObservation {
+  id: string;
+  round: number;
+  observerId: string;       // 侦探 playerId
+  targetId: string;         // 被观察玩家 playerId
+  targetName: string;
+  /** 观察到的行为/小动作 */
+  behavior: string;
+  /** 侦探的推理分析 */
+  deduction: string;
+  /** 是否有可疑迹象 */
+  suspicious: boolean;
+  /** 嫌疑值变化（正=增加，负=减少） */
+  suspicionDelta: number;
+  timestamp: number;
+}
+
+/** 角色可被观察到的行为（AI 自动生成 + 人类玩家也可能有） */
+export interface ObservableBehavior {
+  /** 行为描述（如："频繁看手表"、"手在发抖"、"偷偷和某人交换眼神"） */
+  action: string;
+  /** 这个行为暗示什么（如："可能在等某人"、"很紧张"、"他们认识"） */
+  implication: string;
+  /** 观察到这个行为的玩家 */
+  observedBy: string[];
+}
+
+/** 悄悄话：两个角色之间的私下交流 */
+export interface SecretConversation {
+  id: string;
+  round: number;
+  participantA: string;     // 参与者A playerId
+  participantB: string;     // 参与者B playerId
+  messages: {
+    speaker: string;        // 昵称
+    content: string;
+  }[];
+  /** 交流内容概述（复盘可见） */
+  summary: string;
+  /** 是否包含关键信息 */
+  isKey: boolean;
+}
+
+/** 动机分析：每个角色为什么可能是凶手 */
+export interface MotiveAnalysis {
+  playerId: string;
+  characterName: string;
+  nickname: string;
+  /** 表面动机（所有人都知道的） */
+  surfaceMotive: string;
+  /** 隐藏动机（只有自己知道） */
+  hiddenMotive?: string;
+  /** 侦探推理出的深层动机 */
+  deducedMotive?: string;
+  /** 动机强度 1-5（5=最强动机） */
+  strength: number;
+}
+
+/** 凶手独白：真相大白后凶手讲述整个作案过程 */
+export interface MurdererMonologue {
+  /** 作案动机 */
+  motive: string;
+  /** 精心策划的过程 */
+  planning: string;
+  /** 作案经过 */
+  execution: string;
+  /** 事后处理 */
+  aftermath: string;
+  /** 对其他玩家说的话 */
+  finalWords: string;
+  /** 情感基调 */
+  emotion: 'remorseful' | 'defiant' | 'calm' | 'bitter' | 'desperate';
+}
+
+/** 单个玩家的详细分析（复盘用） */
+export interface PlayerAnalysis {
+  playerId: string;
+  nickname: string;
+  characterName: string;
+  characterRole: string;
+  wasMurderer: boolean;
+  wasPolice: boolean;
+  wasCorrupt: boolean;
+  /** 真实关系网 */
+  realRelationships: string[];
+  /** 声称的关系 vs 真实关系 */
+  claimedVsReal: { claimed: string; real: string }[];
+  /** 个人任务完成情况 */
+  objectives: { description: string; completed: boolean }[];
+  /** 关键发言摘录 */
+  keyStatements: string[];
+  /** 动机分析 */
+  motive: MotiveAnalysis;
+  /** 侦探观察记录（关于此玩家的） */
+  observationsAbout: string[];
+  /** 最终评价 */
+  finalVerdict: string;
+}
+
+/** 超详细复盘数据 */
+export interface DetailedReplay {
+  /** 基本信息 */
+  scenarioTitle: string;
+  victim: string;
+  crimeScene: string;
+  murderWeapon: string;
+  duration: string;
+
+  /** 凶手信息 */
+  murdererId: string;
+  murdererName: string;
+  murdererCharacter: string;
+  murdererMonologue: MurdererMonologue;
+
+  /** 案件真相 */
+  truth: {
+    motive: string;
+    timeline: string[];
+    method: string;
+    keyEvidence: string[];
+  };
+
+  /** 所有玩家的详细分析 */
+  playerAnalyses: PlayerAnalysis[];
+
+  /** 侦探观察记录 */
+  detectiveObservations: DetectiveObservation[];
+
+  /** 悄悄话记录 */
+  secretConversations: SecretConversation[];
+
+  /** 所有关键线索及其含义 */
+  clueAnalysis: {
+    clue: ClueCard;
+    significance: string;
+    pointedTo: string;  // 指向谁
+  }[];
+
+  /** 游戏结果 */
+  winner: string;
+  correctAccusation: boolean;
 }
 
 /** 剧本模板：每个剧本自带专属角色和线索，确保情境一致 */
