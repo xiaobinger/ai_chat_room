@@ -47,8 +47,26 @@ export class MysteryGame extends BaseGameEngine {
     for (const p of this.state.players) {
       results[p.playerId] = {
         won: p.character.isMurderer ? winner === 'murderer' : winner === 'detectives',
-        role: p.character.isMurderer ? '凶手' : p.character.name,
+        role: p.character.isMurderer ? '凶手' : p.character.isPolice ? (p.character.isCorrupt ? '黑警' : '警察') : p.character.name,
       };
+    }
+    // 彩蛋：无论胜负，最终真相大白——凶手（及黑警）终将伏法
+    if (this.state.phase === 'reveal') {
+      const murderer = this.state.players.find((p) => p.character.isMurderer);
+      const corruptPolice = this.state.players.find((p) => p.character.isPolice && p.character.isCorrupt);
+      let epilogue = `【彩蛋】天网恢恢，疏而不漏。${murderer?.character.name}虽${winner === 'murderer' ? '一度逃脱指控' : '被当场擒获'}，但在后续调查中，铁证如山，${murderer?.character.name}最终被绳之以法，受到了法律的严惩。`;
+      if (corruptPolice) {
+        epilogue += ` 而与凶手勾结的${corruptPolice.character.name}也因受贿、包庇罪被一并查处，锒铛入狱。`;
+      }
+      epilogue += ` ${this.state.victim}的在天之灵，终得告慰。`;
+      this.state.events.push({
+        id: crypto.randomUUID(),
+        round: this.state.round,
+        phase: 'reveal',
+        type: 'game_end',
+        content: epilogue,
+        timestamp: Date.now(),
+      });
     }
     return results;
   }

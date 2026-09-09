@@ -11,6 +11,8 @@ export interface CharacterCard {
   secret: string;        // 秘密（仅自己可见）
   objective: string;     // 游戏目标
   isMurderer: boolean;   // 是否为凶手
+  isPolice?: boolean;    // 是否为本案负责调查的警察/侦探
+  isCorrupt?: boolean;   // 警察是否与凶手勾结（仅 isPolice 时有意义）
   alibi: string;         // 不在场证明
   relationshipToVictim: string;  // 与受害者的关系
 }
@@ -45,6 +47,7 @@ export interface MysteryGameState {
   crimeScene: string;                // 案发现场
   murderWeapon: string;              // 凶器
   murdererId: string;                // 凶手 playerId
+  policeId?: string;                 // 负责调查的警察 playerId
   clues: ClueCard[];
   discoveredClues: string[];         // 已发现的线索 id
   discussionLog: DiscussionEntry[];
@@ -159,6 +162,16 @@ export const MYSTERY_SCENARIOS: MysteryScenario[] = [
         objective: '尊重死者，找出真相，不泄露病人隐私。',
         alibi: '案发时在配药室整理药箱。',
         relationshipToVictim: '医患关系，亦是多年老友。',
+      },
+      {
+        name: '李探长',
+        role: '警探',
+        personality: '冷峻、敏锐、直觉惊人',
+        backstory: '当地警局的资深探长，接到报案后第一时间赶到古宅，负责本案调查。',
+        secret: '他曾因受贿被内部调查过，一直想立功洗白自己。',
+        objective: '破案立功，恢复自己的名誉。',
+        alibi: '案发后才到达现场，由警员陪同。',
+        relationshipToVictim: '负责调查此案的警探，与死者素不相识。',
       },
     ],
     clues: [
@@ -276,6 +289,16 @@ export const MYSTERY_SCENARIOS: MysteryScenario[] = [
         alibi: '案发时在酒吧值班，有监控为证。',
         relationshipToVictim: '服务员与客人，偶尔闲聊。',
       },
+      {
+        name: '海警王队长',
+        role: '海警队长',
+        personality: '威严、干练、铁面无私',
+        backstory: '负责这片海域的海警队长，因接到匿名举报随船巡逻，恰遇命案。',
+        secret: '他私下收过艾德蒙的"好处费"，对其走私行为睁一只眼闭一只眼。',
+        objective: '破案，同时不要让自己受贿的事曝光。',
+        alibi: '案发时在海警艇上，有船员作证。',
+        relationshipToVictim: '负责调查此案的海警，与死者有过公务接触。',
+      },
     ],
     clues: [
       {
@@ -391,6 +414,16 @@ export const MYSTERY_SCENARIOS: MysteryScenario[] = [
         objective: '说出真相，但怕被人报复。',
         alibi: '案发时在后台巡逻，有签到记录。',
         relationshipToVictim: '保安与艺人，平时只是点头之交。',
+      },
+      {
+        name: '刘警官',
+        role: '驻场警察',
+        personality: '沉稳、细致、观察力强',
+        backstory: '负责剧院片区治安的警官，当晚正在剧院巡查，案发后封锁了现场。',
+        secret: '他欠了钱老板一笔赌债，钱老板曾暗示他"照顾"一下剧院的事。',
+        objective: '破案，但不想让自己和钱老板的债务关系被人知道。',
+        alibi: '案发时在剧院大堂巡查，有监控为证。',
+        relationshipToVictim: '负责调查此案的警官，与死者有过几面之缘。',
       },
     ],
     clues: [
@@ -508,6 +541,16 @@ export const MYSTERY_SCENARIOS: MysteryScenario[] = [
         alibi: '案发时在房间整理医疗包，有电话记录。',
         relationshipToVictim: '医生与病人，曾为马老板诊疗。',
       },
+      {
+        name: '警员小李',
+        role: '派出所警员',
+        personality: '年轻、热情、但经验不足',
+        backstory: '镇上派出所的年轻警员，因暴风雪被困在旅馆，协助调查此案。',
+        secret: '他偷偷喜欢小美，想在她面前表现自己。',
+        objective: '破案，在小美面前证明自己的能力。',
+        alibi: '案发时在大堂帮忙铲雪，有多人看到。',
+        relationshipToVictim: '负责协助调查的警员，与死者素不相识。',
+      },
     ],
     clues: [
       {
@@ -623,6 +666,16 @@ export const MYSTERY_SCENARIOS: MysteryScenario[] = [
         objective: '为姐姐讨回公道，让金先生付出代价。',
         alibi: '案发时在看书，有同行旅客作证。',
         relationshipToVictim: '前妻的妹妹，有家庭仇恨。',
+      },
+      {
+        name: '国际刑警马先生',
+        role: '国际刑警',
+        personality: '冷静、睿智、深藏不露',
+        backstory: '国际刑警组织的探员，此次搭车是为了追踪一名跨国逃犯，恰遇命案。',
+        secret: '他追踪的逃犯就藏在这趟列车上，他不能暴露自己的身份。',
+        objective: '找出命案凶手，同时不要让逃犯察觉自己的存在。',
+        alibi: '案发时在自己的包厢整理案件资料，无人作证。',
+        relationshipToVictim: '负责调查此案的刑警，与死者素不相识。',
       },
     ],
     clues: [
@@ -740,6 +793,16 @@ export const MYSTERY_SCENARIOS: MysteryScenario[] = [
         alibi: '案发时在公司大堂等待采访，有前台记录。',
         relationshipToVictim: '记者与采访对象，试图挖掘内幕。',
       },
+      {
+        name: '网警林警官',
+        role: '网安支队警官',
+        personality: '理性、专业、不苟言笑',
+        backstory: '公安局网安支队的警官，负责调查实验室的数据泄露案，案发时正在现场。',
+        secret: '他与王总是大学同学，曾收过王总的"咨询费"。',
+        objective: '破案，但不要让自己和王总的关系影响调查公正性。',
+        alibi: '案发时在安保室查看监控，有记录为证。',
+        relationshipToVictim: '负责调查此案的警官，与死者有工作接触。',
+      },
     ],
     clues: [
       {
@@ -856,6 +919,16 @@ export const MYSTERY_SCENARIOS: MysteryScenario[] = [
         alibi: '案发时在客房念经，有其他香客作证。',
         relationshipToVictim: '香客与方丈，有杀夫之仇。',
       },
+      {
+        name: '赵捕头',
+        role: '县衙捕头',
+        personality: '豪爽、正直、但有些鲁莽',
+        backstory: '当地县衙的捕头，接到报案后冒雪上山，负责侦办此案。',
+        secret: '他曾因办错案被降职，急于破案官复原职。',
+        objective: '破案立功，官复原职。',
+        alibi: '案发后才赶到寺庙，有衙役陪同。',
+        relationshipToVictim: '负责调查此案的捕头，与死者素不相识。',
+      },
     ],
     clues: [
       {
@@ -971,6 +1044,16 @@ export const MYSTERY_SCENARIOS: MysteryScenario[] = [
         objective: '获得应得的遗产，为自己和母亲讨回公道。',
         alibi: '案发时在花园抽烟，没人作证。',
         relationshipToVictim: '私生子与生父，因遗产问题产生怨恨。',
+      },
+      {
+        name: '雷斯垂德探长',
+        role: '苏格兰场探长',
+        personality: '严谨、固执、但能力平平',
+        backstory: '苏格兰场派来调查此案的探长，自诩破案无数，实则常常依赖他人线索。',
+        secret: '他收过亨利爵士的好处，曾帮其摆平过一桩商业纠纷。',
+        objective: '破案，保住自己在苏格兰场的名声。',
+        alibi: '案发时在庄园门口与管家交谈，有仆人作证。',
+        relationshipToVictim: '负责调查此案的探长，与死者有公务往来。',
       },
     ],
     clues: [

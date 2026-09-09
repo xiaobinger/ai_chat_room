@@ -15,7 +15,7 @@ const pick = <T>(list: T[]): T | undefined =>
 export function assignMysteryRoles(
   playerIds: string[],
   scenario: MysteryScenario,
-): { characters: Record<string, CharacterCard>; murdererId: string } {
+): { characters: Record<string, CharacterCard>; murdererId: string; policeId: string } {
   // 从剧本角色池中打乱后选取与玩家数相等的角色（若不够则循环取用）
   const shuffledChars = [...scenario.characters].sort(() => Math.random() - 0.5);
 
@@ -42,7 +42,25 @@ export function assignMysteryRoles(
     if (isMurderer) murdererId = playerId;
   });
 
-  return { characters, murdererId };
+  // 分配警察：优先选择角色职业含"警/探/捕/刑警"的非凶手玩家，否则随机选一个非凶手
+  const nonMurdererIds = playerIds.filter((id) => id !== murdererId);
+  let policeId = nonMurdererIds.find((id) =>
+    /警|探|捕|刑警/.test(characters[id].role),
+  );
+  if (!policeId) {
+    policeId = nonMurdererIds[Math.floor(Math.random() * nonMurdererIds.length)];
+  }
+  characters[policeId].isPolice = true;
+
+  // 20% 概率警察与凶手勾结（黑警）
+  const isCorrupt = Math.random() < 0.2;
+  characters[policeId].isCorrupt = isCorrupt;
+  if (isCorrupt) {
+    characters[policeId].secret += '\n【隐藏身份】你已被凶手收买，将暗中帮助凶手逃脱指控，但最终你也难逃法网。';
+    characters[policeId].objective = '表面破案，实则保护凶手，同时保全自己。';
+  }
+
+  return { characters, murdererId, policeId };
 }
 
 /** 初始化游戏状态 */
@@ -51,7 +69,7 @@ export function initMysteryState(
 ): MysteryGameState {
   // 先选剧本，再用剧本自带的角色和线索
   const scenario = MYSTERY_SCENARIOS[Math.floor(Math.random() * MYSTERY_SCENARIOS.length)];
-  const { characters, murdererId } = assignMysteryRoles(players.map((p) => p.playerId), scenario);
+  const { characters, murdererId, policeId } = assignMysteryRoles(players.map((p) => p.playerId), scenario);
 
   const playerStates: MysteryPlayerState[] = players.map((p) => ({
     playerId: p.playerId,
@@ -81,6 +99,7 @@ export function initMysteryState(
     crimeScene: scenario.crimeScene,
     murderWeapon: scenario.murderWeapon,
     murdererId,
+    policeId,
     clues,
     discoveredClues: [],
     discussionLog: [],
@@ -93,7 +112,7 @@ export function initMysteryState(
         round: 1,
         phase: 'introduction',
         type: 'game_start',
-        content: `剧本杀《${scenario.title}》开始！${scenario.synopsis}凶手就在你们之中……`,
+        content: `剧本杀《${scenario.title}》开始！${scenario.synopsis}本案由${characters[policeId].name}负责调查。凶手就在你们之中，每轮投票若未揪出凶手，被投出者将出局，直到找出真凶或只剩凶手与一名无辜者……`,
         timestamp: Date.now(),
       },
     ],
@@ -219,7 +238,40 @@ export function applyMysteryVote(state: MysteryGameState, playerId: string, targ
   return next;
 }
 
-/** 结算投票 */
+/** 进入下一轮：重置状态，进入搜证阶段 */
+export function nextMysteryRound(state: MysteryGameState): MysteryGameState {
+  const next = structuredClone(state);
+  next.round += 1;
+  next.phase = 'investigation';
+  next.votes = {};
+  next.voteStatus = {};
+  next.accusedMurdererId = undefined;
+  for (const p of next.players) {
+    p.hasSpoken = false;
+    p.hasSearched = false;
+    p.votes = 0;
+  }
+  next.events.push({
+    id: crypto.randomUUID(),
+    round: next.round,
+    phase: 'investigation',
+    type: 'phase_change',
+    content: `第 ${next.round} 轮开始，进入搜证阶段。请各位继续调查${next.victim}被害的真相。`,
+    timestamp: Date.now(),
+  });
+  return next;
+}
+
+/** 检查是否只剩凶手和一名非警察（凶手获胜条件） */
+function checkMurdererWin(state: MysteryGameState): boolean {
+  const alive = getAlivePlayers(state);
+  const aliveMurderer = alive.filter((p) => p.character.isMurderer);
+  const aliveNonPolice = alive.filter((p) => !p.character.isMurderer && !p.character.isPolice);
+  // 凶手存活 且 非警察平民只剩 1 人 → 凶手胜利（成功隐藏）
+  return aliveMurderer.length === 1 && aliveNonPolice.length <= 1;
+}
+
+/** 结算投票（多轮制：未找出凶手则淘汰被投者，进入下一轮） */
 export function resolveMysteryVote(state: MysteryGameState): MysteryGameState {
   const next = structuredClone(state);
 
@@ -244,12 +296,26 @@ export function resolveMysteryVote(state: MysteryGameState): MysteryGameState {
     }
   }
 
-  // 平票时无人被指控
-  if (!tie && accused) {
-    next.accusedMurdererId = accused;
-    const accusedPlayer = next.players.find((p) => p.playerId === accused);
-    const isCorrect = accused === next.murdererId;
+  // 平票或无人投票 → 本轮无人出局，直接进入下一轮
+  if (tie || !accused || maxVotes === 0) {
+    next.events.push({
+      id: crypto.randomUUID(),
+      round: next.round,
+      phase: 'voting',
+      type: 'vote_result',
+      content: tie ? '投票平票！本轮无人出局，继续调查。' : '无人投票！本轮无人出局，继续调查。',
+      timestamp: Date.now(),
+    });
+    return nextMysteryRound(next);
+  }
 
+  // 有人被投出
+  next.accusedMurdererId = accused;
+  const accusedPlayer = next.players.find((p) => p.playerId === accused);
+  const isCorrect = accused === next.murdererId;
+
+  if (isCorrect) {
+    // 投出真凶 → 好人胜利
     next.events.push({
       id: crypto.randomUUID(),
       round: next.round,
@@ -257,27 +323,48 @@ export function resolveMysteryVote(state: MysteryGameState): MysteryGameState {
       type: 'vote_result',
       actorName: accusedPlayer?.nickname,
       characterName: accusedPlayer?.character.name,
-      content: isCorrect
-        ? `${accusedPlayer?.nickname} 被指控为凶手！指控正确！`
-        : `${accusedPlayer?.nickname} 被指控为凶手！指控错误！真正的凶手是...`,
+      content: `${accusedPlayer?.nickname}（${accusedPlayer?.character.name}）被指控为凶手！指控正确！真相大白。`,
       timestamp: Date.now(),
     });
+    next.winner = 'detectives';
+    next.phase = 'reveal';
+    return next;
+  }
 
-    next.winner = isCorrect ? 'detectives' : 'murderer';
-  } else {
+  // 投错了 → 淘汰被投者，进入下一轮
+  if (accusedPlayer) {
+    accusedPlayer.isAlive = false;
+    accusedPlayer.suspicionLevel += 3;
+  }
+  next.events.push({
+    id: crypto.randomUUID(),
+    round: next.round,
+    phase: 'voting',
+    type: 'vote_result',
+    actorName: accusedPlayer?.nickname,
+    characterName: accusedPlayer?.character.name,
+    content: `${accusedPlayer?.nickname}（${accusedPlayer?.character.name}）被投票出局，但TA不是凶手！真凶仍藏匿其中，调查继续……`,
+    timestamp: Date.now(),
+  });
+
+  // 检查凶手胜利条件：只剩凶手 + 1 名非警察
+  if (checkMurdererWin(next)) {
+    const murdererPlayer = next.players.find((p) => p.character.isMurderer);
     next.events.push({
       id: crypto.randomUUID(),
       round: next.round,
       phase: 'voting',
       type: 'vote_result',
-      content: '投票平票！凶手逃脱了...',
+      content: `存活玩家仅剩凶手与一名无辜者，${murdererPlayer?.character.name}成功隐藏身份，暂时逃脱了法律制裁……`,
       timestamp: Date.now(),
     });
     next.winner = 'murderer';
+    next.phase = 'reveal';
+    return next;
   }
 
-  next.phase = 'reveal';
-  return next;
+  // 否则进入下一轮
+  return nextMysteryRound(next);
 }
 
 /** 生成 AI 角色扮演发言 */
@@ -410,6 +497,7 @@ export function decideMysteryVote(
 ): { playerId: string; targetId: string } {
   const { character } = player;
   const isMurderer = character.isMurderer;
+  const isCorruptPolice = character.isPolice && character.isCorrupt;
   const alivePlayers = getAlivePlayers(state).filter((p) => p.playerId !== player.playerId);
 
   if (alivePlayers.length === 0) {
@@ -418,22 +506,23 @@ export function decideMysteryVote(
 
   let target: MysteryPlayerState;
 
-  if (isMurderer) {
-    // 凶手：优先嫁祸高嫌疑的非凶手玩家
+  if (isMurderer || isCorruptPolice) {
+    // 凶手 / 黑警：优先嫁祸高嫌疑的非凶手玩家（保护真凶）
     const nonMurderers = alivePlayers.filter((p) => !p.character.isMurderer);
-    const sorted = [...nonMurderers].sort((a, b) => b.suspicionLevel - a.suspicionLevel);
+    // 黑警不投凶手；凶手不自投
+    const safeTargets = nonMurderers.filter((p) => p.playerId !== state.murdererId);
+    const sorted = [...(safeTargets.length > 0 ? safeTargets : nonMurderers)].sort(
+      (a, b) => b.suspicionLevel - a.suspicionLevel,
+    );
     target = sorted[0] ?? nonMurderers[Math.floor(Math.random() * nonMurderers.length)] ?? alivePlayers[0];
   } else {
-    // 好人：根据线索和嫌疑推理
-    // 检查是否有关键线索指向某嫌疑人
+    // 好人（含正直警察）：根据线索和嫌疑推理
     const keyClue = state.clues.find((c) => c.isKey && state.discoveredClues.includes(c.id));
+    const sorted = [...alivePlayers].sort((a, b) => b.suspicionLevel - a.suspicionLevel);
     if (keyClue) {
       // 关键线索发现后，优先投给最高嫌疑
-      const sorted = [...alivePlayers].sort((a, b) => b.suspicionLevel - a.suspicionLevel);
       target = sorted[0] ?? alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
     } else {
-      // 没有关键线索，按嫌疑投票
-      const sorted = [...alivePlayers].sort((a, b) => b.suspicionLevel - a.suspicionLevel);
       target = sorted[0] ?? alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
     }
   }
@@ -470,6 +559,7 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
         nickname: p.nickname,
         character: { name: p.character.name, role: p.character.role },
         isAlive: p.isAlive,
+        isPolice: p.character.isPolice,
       })),
       winner: state.winner,
       events: state.events,
@@ -485,6 +575,7 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
     victim: state.victim,
     crimeScene: state.crimeScene,
     murderWeapon: finished ? state.murderWeapon : me?.character.isMurderer ? state.murderWeapon : '???',
+    policeId: state.policeId,
     myCharacter: me?.character,
     discoveredClues: state.clues.filter((c) => state.discoveredClues.includes(c.id)),
     totalClueCount: state.clues.length,
@@ -499,6 +590,8 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
         role: p.character.role,
         personality: p.character.personality,
         isMurderer: finished ? p.character.isMurderer : undefined,
+        isPolice: p.character.isPolice,
+        isCorrupt: finished ? p.character.isCorrupt : undefined,
       },
       isAlive: p.isAlive,
       isMe: p.playerId === playerId,
