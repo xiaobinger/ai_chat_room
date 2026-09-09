@@ -36,7 +36,13 @@ export function assignMysteryRoles(
       secret: isMurderer
         ? `你就是杀害${scenario.victim}的凶手！凶器是${scenario.murderWeapon}。洗清嫌疑，嫁祸他人。`
         : charTemplate.secret,
-      objective: isMurderer ? '隐藏身份，嫁祸他人，逃脱指控。' : charTemplate.objective,
+      // 凶手的任务：隐藏身份逃脱；普通角色：完成卡上的个人任务
+      objectives: isMurderer
+        ? [
+            { type: 'hide_secret' as const, description: '隐藏凶手身份，不被投票出局', reward: '成功逃脱', isComplete: false },
+            { type: 'frame_someone' as const, description: '成功嫁祸一名其他玩家', reward: '额外积分', isComplete: false },
+          ]
+        : charTemplate.objectives,
     };
     characters[playerId] = character;
     if (isMurderer) murdererId = playerId;
@@ -57,7 +63,10 @@ export function assignMysteryRoles(
   characters[policeId].isCorrupt = isCorrupt;
   if (isCorrupt) {
     characters[policeId].secret += '\n【隐藏身份】你已被凶手收买，将暗中帮助凶手逃脱指控，但最终你也难逃法网。';
-    characters[policeId].objective = '表面破案，实则保护凶手，同时保全自己。';
+    characters[policeId].objectives = [
+      { type: 'hide_secret' as const, description: '表面破案，实则保护凶手不被指认', reward: '凶手分赃', isComplete: false },
+      { type: 'escape' as const, description: '确保自己不被怀疑，安全脱身', reward: '全身而退', isComplete: false },
+    ];
   }
 
   return { characters, murdererId, policeId };
@@ -80,6 +89,7 @@ export function initMysteryState(
     hasSearched: false,
     votes: 0,
     suspicionLevel: 0,
+    completedObjectives: [],
   }));
 
   // 使用剧本自带的线索（打乱顺序，取 4-6 条）

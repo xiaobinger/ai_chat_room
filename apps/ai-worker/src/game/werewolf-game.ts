@@ -31,6 +31,26 @@ import {
   decideVote,
   decideHunterShoot,
 } from './ai-decision';
+import { generateLlmSpeech } from './speech-generator';
+
+const WEREWOLF_ROLE_LABELS: Record<string, string> = {
+  werewolf: '狼人',
+  villager: '村民',
+  seer: '预言家',
+  witch: '女巫',
+  hunter: '猎人',
+};
+
+function getRolePersonality(role: string): string {
+  const personalities: Record<string, string> = {
+    werewolf: '心机深沉，善于伪装，说话滴水不漏',
+    villager: '朴实耿直，逻辑推理，直觉敏锐',
+    seer: '自信果断，掌握关键信息，敢于带队',
+    witch: '谨慎低调，不轻易暴露身份，关键时刻出手',
+    hunter: '直率果敢，有恃无恐，敢说敢做',
+  };
+  return personalities[role] ?? '普通玩家';
+}
 
 const NIGHT_DEADLINE_MS = 60_000;
 const DAY_DEADLINE_MS = 90_000;
@@ -78,13 +98,20 @@ function generateAiFinalSpeech(role: string, _nickname: string): string {
 export class WerewolfGame extends BaseGameEngine {
   private state: GameState;
   private lastBroadcast: string | null = null;
+  /** LLM 发言生成器（可选；不可用时回退模板） */
+  private speechProvider: import('../model-provider').ModelProvider | null = null;
 
   constructor(
     players: GamePlayerInfo[],
     state?: Record<string, unknown>,
-    options?: { judgeMode?: 'owner' | 'ai' | null; judgePlayerId?: string | null },
+    options?: {
+      judgeMode?: 'owner' | 'ai' | null;
+      judgePlayerId?: string | null;
+      speechProvider?: import('../model-provider').ModelProvider;
+    },
   ) {
     super(players);
+    this.speechProvider = options?.speechProvider ?? null;
     if (state) {
       if (state.format !== 2) throw new GameError('unsupported_state', '旧版本游戏状态无法恢复');
       this.state = state as unknown as GameState;
@@ -398,13 +425,57 @@ export class WerewolfGame extends BaseGameEngine {
     return true;
   }
 
+  private async stepDayAsync(): Promise<boolean> {
+    const state = this.state;
+    const alive = getAlivePlayers(state);
+
+    for (const p of alive) {
+      if (this.isAi(p.playerId) && !state.speechStatus[p.playerId]) {
+        let speech = generateDaySpeech({ state, aiPlayer: p });
+
+        // 尝试 LLM 动态生成（带超时保护，失败回退模板）
+        if (this.speechProvider) {
+          const recentEvents = state.dayMessages.slice(-5).map((m) => `${m.nickname}: ${m.content}`);
+          try {
+            const llmSpeech = await Promise.race([
+              generateLlmSpeech(this.speechProvider, {
+                nickname: p.nickname,
+                gameRole: WEREWOLF_ROLE_LABELS[p.role] ?? p.role,
+                personality: getRolePersonality(p.role),
+                phase: '白天讨论',
+                round: state.round,
+                recentEvents,
+                timeoutMs: 8000,
+                customHint: p.role === 'werewolf' ? '你是狼人，要伪装成好人，误导投票方向。' : undefined,
+              }),
+              new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 8000)),
+            ]);
+            if (llmSpeech) speech = llmSpeech;
+          } catch {
+            // LLM 失败，使用模板
+          }
+        }
+
+        applyDaySpeak(state, p.playerId, speech);
+        return true;
+      }
+    }
+
+    if (alive.some((p) => !state.speechStatus[p.playerId])) return false;
+
+    this.lastBroadcast = null;
+    startVotePhase(state);
+    return true;
+  }
+
   private stepDay(): boolean {
     const state = this.state;
     const alive = getAlivePlayers(state);
 
     for (const p of alive) {
       if (this.isAi(p.playerId) && !state.speechStatus[p.playerId]) {
-        applyDaySpeak(state, p.playerId, generateDaySpeech({ state, aiPlayer: p }));
+        const speech = generateDaySpeech({ state, aiPlayer: p });
+        applyDaySpeak(state, p.playerId, speech);
         return true;
       }
     }
