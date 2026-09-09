@@ -358,6 +358,94 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 | 2026-09-07 | WP10 娱乐空间+聊天室增强 | 娱乐空间 Phase 1-3、@点名系统、身份徽章、面具昵称、复盘回放 | ✅ |
 | 2026-09-08 | WP11 娱乐空间扩展 | 谁是凶手+剧本杀游戏、彩蛋角色/事件、搜索筛选、游戏统计 | ✅ |
 | 2026-09-08 | WP12 游戏全面重构 | BaseGameEngine 统一架构、GameDirector 编排器、谁是卧底、四游戏商用化 | ✅ |
+| 2026-09-09 | WP13 卧底多轮投票修复 | resolveTiebreak 函数、consecutiveTies 字段、checkUndercoverVictory 修正 | ✅ |
+| 2026-09-09 | WP14 房间管理与 AI 增强 | restart/kick/dissolve API、game_restarted WS 事件、卧底 AI 描述与投票策略提升 | ✅ |
+| 2026-09-09 | WP15 剧本杀场景扩展 | 8 个专属剧本场景（角色+线索一一对应）、AI 发言引入具体剧本信息（死者/凶器/秘密/关系）| ✅ |
+| 2026-09-09 | WP16 剧本杀多轮投票 + 警察角色 | 多轮投票（错投淘汰→继续）、警察/侦探角色、20% 黑警概率、凶手仅存 + 1 非警察才胜利、结尾彩蛋（凶手终被绳之以法）| ✅ |
+| 2026-09-09 | WP17 手机版适配 | viewport-fit=cover PWA meta、safe-area-insets、768px/480px 双断点响应式 CSS、touch 优化、pointer:coarse 44px 触控目标、prefers-reduced-motion 无障碍 | ✅ |
+| 2026-09-09 | WP18 CI 修复 + 文档规范 | 剧本杀测试断言改为结构验证（随机性轮数）、创建 .trae/rules/project_rules.md 固定文档+Obsidian 同步流程 | ✅ |
+
+## 2026-09-09：WP13 卧底多轮投票修复
+
+### 关键事件
+- **卧底游戏无限循环修复**：
+  - `checkUndercoverVictory` 原逻辑用 `alive.length <= 3` 判断平民胜利，导致只剩 3 人时误判
+  - 修正为：卧底存活数 > 0 且卧底数 ≥ 平民数时卧底胜；否则平民胜
+  - 新增 `resolveTiebreak()` 函数处理连续平票（≥3 次后按嫌疑度最高者自动淘汰）
+  - `initUndercoverState` 补上缺失的 `consecutiveTies: 0` 字段
+
+### 验证
+- `pnpm typecheck`：零错误
+- `pnpm test`：74 测试全绿
+- `pnpm lint`：0 errors
+
+## 2026-09-09：WP14 房间管理与 AI 增强
+
+### 关键事件
+- **房间管理 API**：
+  - `POST /rooms/:roomId/restart` — 房主重置房间，清空所有玩家后重新加入房主
+  - `DELETE /rooms/:roomId/players/:playerId` — 房主踢出人类玩家（游戏中不可踢）
+  - `DELETE /rooms/:roomId` — 房主解散房间（游戏中不可解散）
+- **前端增强**：`GameRoom.tsx` 新增"再来一局""踢出""解散房间"按钮，游戏结束后显示管理按钮
+- **WebSocket 事件**：新增 `game_restarted` 事件；`game_player_left` payload 增加可选 `nickname`
+- **卧底 AI 策略提升**：卧底描述走中间路线避免极端，投票时优先选择与自身描述距离最远的玩家
+
+### 验证
+- `pnpm typecheck`：零错误
+- `pnpm test`：74 测试全绿
+- `pnpm lint`：0 errors
+
+## 2026-09-09：WP15 剧本杀场景扩展
+
+### 关键事件
+- **剧本数据结构重构**：从全局共享角色池+线索池改为 `MysteryScenario` 专属数据模型
+- **扩展为 8 个剧本场景**：古宅疑云、游轮迷案、剧院幽灵、雪山旅馆、东方列车谋杀、实验室疑案、寺庙命案、庄园晚宴
+- **AI 发言智能提升**：引入死者姓名、凶器名称、角色秘密、人际关系、发现的线索等上下文；不同角色发言风格差异化
+
+### 验证
+- `pnpm typecheck`：零错误
+- `pnpm test`：74 测试全绿
+- `pnpm lint`：0 errors
+
+## 2026-09-09：WP16 剧本杀多轮投票 + 警察角色
+
+### 关键事件
+- **多轮投票机制**：错误指控→淘汰被投者继续；平票→无人出局继续；正确指控→侦探胜利；仅存凶手+≤1非警察→凶手胜利
+- **警察/侦探角色**：每剧本新增一名警察角色，20% 概率为黑警（与凶手勾结）
+- **结尾彩蛋**：无论胜负，彩蛋事件显示凶手（和可能的黑警）最终被绳之以法
+- **投票决策 AI 提升**：普通玩家参考线索投票；侦探优先投票符合调查方向；凶手/黑警保护凶手或嫁祸无辜者
+
+### 验证
+- `pnpm typecheck`：零错误
+- `pnpm test`：74 测试全绿
+- `pnpm lint`：0 errors
+
+## 2026-09-09：WP17 手机版适配
+
+### 关键事件
+- **viewport 配置**：`viewport-fit=cover`、`maximum-scale=1`、PWA meta 标签
+- **安全区域适配**：CSS 变量 `--safe-top/bottom/left/right` 使用 `env(safe-area-inset-*)`
+- **响应式断点**：
+  - 768px：单列布局、水平滚动玩家列表、紧凑工具栏、双列线索/投票
+  - 480px：网格工具栏、全宽投票按钮（44px）、堆叠词卡、全屏表情/提及选择器
+  - 横屏优化（≤900px）、pointer:coarse 触控目标（≥44px）、prefers-reduced-motion
+- **触摸优化**：`-webkit-tap-highlight-color`、`touch-action:manipulation`、`overscroll-behavior-y:contain`
+
+### 验证
+- `pnpm typecheck`：零错误
+- `pnpm build`：CSS 42KB / JS 364KB
+- `pnpm lint`：0 errors
+
+## 2026-09-09：WP18 CI 修复 + 文档规范
+
+### 关键事件
+- **CI 测试修复**：剧本杀阶段断言改为结构验证（`toBeGreaterThanOrEqual(4)` + 按 `['investigation','discussion','voting']` 循环校验），兼容单轮和多轮两种场景
+- **文档规范固化**：创建 `.trae/rules/project_rules.md`，固定每次任务完成后同步 `docs/project-history.md` 和 Obsidian 归档
+
+### 验证
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：74 测试全绿
+- `pnpm lint`：0 errors
 
 ## 经验教训
 1. Windows 环境下工作区路径处理需要特别小心，`\\?\` 前缀会导致 CMD 和部分 Node 工具异常
