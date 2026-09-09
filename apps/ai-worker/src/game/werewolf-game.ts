@@ -445,10 +445,10 @@ export class WerewolfGame extends BaseGameEngine {
                 phase: '白天讨论',
                 round: state.round,
                 recentEvents,
-                timeoutMs: 8000,
+                timeoutMs: 20_000,
                 customHint: p.role === 'werewolf' ? '你是狼人，要伪装成好人，误导投票方向。' : undefined,
               }),
-              new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 8000)),
+              new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 20_000)),
             ]);
             if (llmSpeech) speech = llmSpeech;
           } catch {

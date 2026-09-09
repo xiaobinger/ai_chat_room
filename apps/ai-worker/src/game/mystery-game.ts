@@ -407,10 +407,10 @@ export class MysteryGame extends BaseGameEngine {
             phase: '真相大白，凶手独白',
             round: state.round,
             recentEvents: state.discussionLog.slice(-5).map((d) => `${d.playerName}: ${d.content}`),
-            timeoutMs: 15_000,
+            timeoutMs: 30_000,
             customHint: `你是真正的凶手。现在真相大白，请做一个独白，包括：1.你的杀人动机 2.你如何策划的 3.作案经过 4.事后如何处理 5.你想对其他人说的话。要有情感深度。`,
           }),
-          new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 15_000)),
+          new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 30_000)),
         ]);
 
         if (monologueText) {
