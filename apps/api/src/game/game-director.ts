@@ -101,7 +101,16 @@ export class GameDirector {
     state: unknown,
   ): GameDirector {
     const engine = buildEngine(gameType, players, state as Record<string, unknown>);
-    const director = new GameDirector(roomId, gameType, players, engine);
+    // 从持久化状态恢复法官身份（否则重启后房主法官无法再发言）
+    const persisted = ((state ?? {}) as { judgeMode?: 'owner' | 'ai' | null; judgePlayerId?: string | null });
+    const judgeOptions: JudgeOptions | undefined = persisted.judgeMode
+      ? {
+          judgeMode: persisted.judgeMode,
+          judgePlayerId: persisted.judgePlayerId ?? null,
+          ownerUserId: players.find((p) => p.id === persisted.judgePlayerId)?.userId ?? null,
+        }
+      : undefined;
+    const director = new GameDirector(roomId, gameType, players, engine, judgeOptions);
     GameDirector.active.set(roomId, director);
     return director;
   }
@@ -208,8 +217,9 @@ export class GameDirector {
         }
         const moved = this.engine.step();
         if (!moved) {
-          // 防御：无人类待行动且引擎无法推进，避免死循环
+          // 防御：无人类待行动且引擎无法推进，避免死循环；仍广播最新状态，保证前端不静默卡死
           await this.persist();
+          this.broadcastState();
           return;
         }
         await this.persist();

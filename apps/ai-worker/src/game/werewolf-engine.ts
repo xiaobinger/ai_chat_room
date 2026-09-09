@@ -106,6 +106,7 @@ function logEvent(
   content: string,
   actorId?: string,
   targetId?: string,
+  secret = false,
 ): void {
   const actor = actorId ? state.players.find((p) => p.playerId === actorId) : undefined;
   const target = targetId ? state.players.find((p) => p.playerId === targetId) : undefined;
@@ -121,6 +122,7 @@ function logEvent(
     content,
     timestamp: Date.now(),
     role: actor?.role,
+    secret: secret || undefined,
   });
 }
 
@@ -139,6 +141,7 @@ export function applyWolfKill(state: GameState, wolfId: string, targetId: string
   state.wolfVotes[wolfId] = targetId;
   // 同步更新当晚刀口（女巫需要看到）
   state.nightVictim = majorityVote(state.wolfVotes, state);
+  logEvent(state, 'night_action', `狼人 ${wolf.nickname} 悄悄睁眼，选择击杀 ${target.nickname}`, wolfId, targetId, true);
 }
 
 /** 预言家查验 */
@@ -160,6 +163,14 @@ export function applySeerCheck(state: GameState, seerId: string, targetId: strin
     isWerewolf: target.role === 'werewolf',
   };
   state.seerChecks.push(result);
+  logEvent(
+    state,
+    'night_action',
+    `预言家 ${seer.nickname} 查验了 ${target.nickname}，结果是${result.isWerewolf ? '狼人' : '好人'}`,
+    seerId,
+    targetId,
+    true,
+  );
 }
 
 /** 女巫用药（save 需在狼刀确定后；pass 为空过） */
@@ -180,6 +191,8 @@ export function applyWitchAction(
     if (!state.nightVictim) throw new GameError('no_victim', '今晚暂无被刀目标');
     state.witchTonight = 'save';
     state.witchPotions.save = false;
+    const victimName = state.players.find((p) => p.playerId === state.nightVictim)?.nickname ?? '未知';
+    logEvent(state, 'night_action', `女巫 ${witch.nickname} 使用解药，救起了 ${victimName}`, witchId, state.nightVictim, true);
   } else if (action === 'poison') {
     if (!state.witchPotions.poison) throw new GameError('no_poison_potion', '毒药已用过');
     if (!targetId) throw new GameError('missing_target', '请选择毒杀目标');
@@ -189,8 +202,10 @@ export function applyWitchAction(
     state.witchTonight = 'poison';
     state.witchPoisonTarget = targetId;
     state.witchPotions.poison = false;
+    logEvent(state, 'night_action', `女巫 ${witch.nickname} 使用毒药，毒杀了 ${target.nickname}`, witchId, targetId, true);
   } else {
     state.witchTonight = 'pass';
+    logEvent(state, 'night_action', `女巫 ${witch.nickname} 今晚没有使用药剂`, witchId, undefined, true);
   }
 }
 
@@ -568,8 +583,11 @@ export function getPlayerView(state: GameState, playerId: string | null, isJudge
     deadToday: state.deadToday,
     winner: state.winner,
     pendingHunterIsMe: state.pendingHunter !== undefined && state.pendingHunter === playerId,
-    // 事件里剥离角色信息（防止前端直接从 events 反推身份）
-    events: state.events.map((e) => ({ ...e, role: undefined })),
+    // 事件里剥离角色信息（防止前端直接从 events 反推身份）；
+    // 秘密事件（狼刀/查验/女巫用药）仅终局后公开，对局中仅法官视角可见
+    events: state.events
+      .filter((e) => finished || !e.secret)
+      .map((e) => ({ ...e, role: undefined, secret: undefined })),
   };
 
   if (me?.role === 'werewolf' && !finished) {

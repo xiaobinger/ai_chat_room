@@ -17,7 +17,7 @@ export interface GameLogEntry {
   id: string;
   round: number;
   phase: GamePhase;
-  type: 'phase_change' | 'player_action' | 'player_death' | 'vote_result' | 'game_start' | 'game_end' | 'judge_speak' | 'final_speech';
+  type: 'phase_change' | 'player_action' | 'player_death' | 'vote_result' | 'game_start' | 'game_end' | 'judge_speak' | 'final_speech' | 'night_action';
   actorId?: string;
   actorName?: string;
   targetId?: string;
@@ -26,6 +26,8 @@ export interface GameLogEntry {
   timestamp: number;
   /** 仅复盘用；玩家视角会剥离 */
   role?: WerewolfRole;
+  /** 秘密事件（狼刀/查验/女巫用药等）：对局中玩家视角过滤，仅法官与复盘可见 */
+  secret?: boolean;
 }
 
 export interface SeerCheckResult {

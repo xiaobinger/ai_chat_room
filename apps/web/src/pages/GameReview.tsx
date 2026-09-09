@@ -13,6 +13,8 @@ interface GameEvent {
   targetName?: string;
   content: string;
   timestamp: number;
+  /** 秘密事件（狼刀/查验/女巫用药等），终局复盘全量公开 */
+  secret?: boolean;
 }
 
 interface GameReviewData {
@@ -61,6 +63,17 @@ const EVENT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   clue_discovered: { label: '发现线索', color: '#5ee9a3' },
   special_event: { label: '特殊事件', color: '#ffbd75' },
   roleplay: { label: '角色发言', color: '#8ec9ff' },
+  night_action: { label: '夜晚密谋', color: '#8ec9ff' },
+  judge_speak: { label: '法官', color: '#ffd479' },
+  final_speech: { label: '临终遗言', color: '#c9b8ff' },
+};
+
+const PHASE_LABELS: Record<string, string> = {
+  night: '夜晚',
+  day: '白天',
+  vote: '投票',
+  final_speech: '遗言',
+  finished: '终局',
 };
 
 export default function GameReview() {
@@ -181,8 +194,11 @@ export default function GameReview() {
                     <div className="event-header">
                       <span className="event-type" style={{ color: typeInfo.color }}>
                         {typeInfo.label}
+                        {event.secret && <span className="event-secret">秘密</span>}
                       </span>
-                      <span className="event-round">第 {event.round} 轮</span>
+                      <span className="event-round">
+                        第 {event.round} 轮 · {PHASE_LABELS[event.phase] ?? event.phase}
+                      </span>
                     </div>
                     <p className="event-text">{event.content}</p>
                   </div>

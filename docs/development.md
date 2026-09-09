@@ -181,8 +181,17 @@ PM2 配置在 `ecosystem.config.cjs`（双进程：`tianma-api` + `tianma-worker
 | `POST` | `/entertainment/rooms/:roomId/start` | 房主 | 开始游戏 |
 | `GET` | `/entertainment/rooms/:roomId/state` | 成员 | 获取游戏状态 |
 | `POST` | `/entertainment/rooms/:roomId/action` | 玩家 | 游戏动作（含 clueId） |
-| `GET` | `/entertainment/rooms/:roomId/review` | 成员 | 获取复盘数据 |
+| `GET` | `/entertainment/rooms/:roomId/review` | 成员 | 获取复盘数据（终局返回全量 events，含 `secret` 夜晚密谋事件） |
+| `DELETE` | `/entertainment/rooms/:roomId` | 房主 | 解散房间（游戏进行中不可解散） |
 | `GET` | `/entertainment/stats` | 登录 | 获取用户游戏统计 |
+
+### 狼人杀引擎要点（WP19）
+
+- **夜晚待行动**：仅狼人/预言家/女巫有夜晚行动，村民与猎人不进入 `pendingHumans()`（否则夜晚无法结算）
+- **猎人开枪**：阵亡猎人（`pendingHunter`）若是人类仍会进入待行动列表，30s 未开枪由超时托管自动收枪
+- **秘密事件**：狼刀选择、预言家查验、女巫用药写入 `events`（`type: 'night_action'`、`secret: true`）；
+  对局中玩家视角过滤秘密事件并剥离 `role`，法官视角与终局复盘全量可见
+- **法官恢复**：`GameDirector.restore()` 从持久化 `gameState` 恢复 `judgeMode/judgePlayerId`，重启后法官身份不丢
 
 ## 已知未完成
 

@@ -163,6 +163,92 @@ describe('狼人杀', () => {
       expect(['werewolf', 'villager']).toContain(state.winner);
     }
   });
+
+  it('AI 法官模式：全 AI 对局完整跑完，法官有广播且不参与角色分配', () => {
+    for (let run = 0; run < 3; run++) {
+      const players = [...aiPlayers(8), { playerId: 'judge', nickname: 'AI 法官', isAi: true }];
+      const game = new WerewolfGame(players, undefined, { judgeMode: 'ai', judgePlayerId: 'judge' });
+      runToEnd(game);
+      const state = game.getState() as {
+        winner: string;
+        players: { playerId: string }[];
+        events: { type: string }[];
+      };
+      expect(['werewolf', 'villager']).toContain(state.winner);
+      expect(state.players.every((p) => p.playerId !== 'judge')).toBe(true);
+      expect(state.events.some((e) => e.type === 'judge_speak')).toBe(true);
+      // 终局视角全量公开：秘密夜晚行动可见（复盘数据源）
+      const view = game.getView(null) as { events: { type: string }[] };
+      expect(view.events.some((e) => e.type === 'night_action')).toBe(true);
+    }
+  });
+
+  it('村民/猎人夜晚无行动，不阻塞夜晚结算（人类村民在场也能推进）', () => {
+    const base = new WerewolfGame(aiPlayers(9));
+    const baseState = base.getState() as { players: { playerId: string; role: string }[] };
+    const villager = baseState.players.find((p) => p.role === 'villager')!;
+    const hunter = baseState.players.find((p) => p.role === 'hunter')!;
+    const players = aiPlayers(9).map((p) =>
+      p.playerId === villager.playerId || p.playerId === hunter.playerId ? { ...p, isAi: false } : p,
+    );
+    const game = new WerewolfGame(players, base.getState());
+    // 夜晚：人类村民/猎人没有夜晚行动，不应出现在待行动列表
+    expect(game.pendingHumans()).toEqual([]);
+    // 夜晚应能由 AI 行动直接结算完毕
+    let guard = 0;
+    while ((game.getState() as { phase: string }).phase === 'night' && guard++ < 50) {
+      expect(game.step()).toBe(true);
+    }
+    expect((game.getState() as { phase: string }).phase).not.toBe('night');
+  });
+
+  it('人类猎人阵亡后进入待行动列表，超时托管自动收枪', () => {
+    const base = new WerewolfGame(aiPlayers(9));
+    const baseState = base.getState() as { players: { playerId: string; role: string }[] };
+    const hunter = baseState.players.find((p) => p.role === 'hunter')!;
+    const players = aiPlayers(9).map((p) => (p.playerId === hunter.playerId ? { ...p, isAi: false } : p));
+    const game = new WerewolfGame(players, base.getState());
+    const state = game.getState() as {
+      pendingHunter?: string;
+      players: { playerId: string; isAlive: boolean }[];
+    };
+    // 模拟猎人阵亡待开枪（阵亡者不在存活列表，历史上因此永远等不到人类行动）
+    state.players.find((p) => p.playerId === hunter.playerId)!.isAlive = false;
+    state.pendingHunter = hunter.playerId;
+    expect(game.pendingHumans()).toContain(hunter.playerId);
+    game.autoAct(hunter.playerId);
+    expect(state.pendingHunter).toBeUndefined();
+  });
+
+  it('复盘事件记录夜晚细节（狼刀/查验/女巫用药），且对局中不泄露', () => {
+    const game = new WerewolfGame(aiPlayers(9));
+    const state = game.getState() as {
+      players: { playerId: string; nickname: string; role: string }[];
+      events: { type: string; content: string; secret?: boolean }[];
+    };
+    const wolf = state.players.find((p) => p.role === 'werewolf')!;
+    const seer = state.players.find((p) => p.role === 'seer')!;
+    const witch = state.players.find((p) => p.role === 'witch')!;
+    const villager = state.players.find((p) => p.role === 'villager')!;
+
+    game.handleAction({ type: 'werewolf_kill', playerId: wolf.playerId, targetId: villager.playerId });
+    game.handleAction({ type: 'seer_check', playerId: seer.playerId, targetId: wolf.playerId });
+    game.handleAction({ type: 'witch_save', playerId: witch.playerId });
+
+    const nightEvents = state.events.filter((e) => e.type === 'night_action');
+    expect(nightEvents.length).toBeGreaterThanOrEqual(3);
+    expect(nightEvents.every((e) => e.secret)).toBe(true);
+    expect(
+      nightEvents.some((e) => e.content.includes(wolf.nickname) && e.content.includes(villager.nickname)),
+    ).toBe(true);
+    expect(nightEvents.some((e) => e.content.includes(seer.nickname))).toBe(true);
+    expect(nightEvents.some((e) => e.content.includes(witch.nickname))).toBe(true);
+
+    // 对局中玩家视角过滤秘密事件（防泄露身份）
+    const view = game.getView(villager.playerId) as { events: { secret?: boolean; type: string }[] };
+    expect(view.events.every((e) => !e.secret)).toBe(true);
+    expect(view.events.every((e) => e.type !== 'night_action')).toBe(true);
+  });
 });
 
 describe('谁是凶手', () => {

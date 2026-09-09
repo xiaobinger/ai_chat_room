@@ -152,15 +152,16 @@ export class WerewolfGame extends BaseGameEngine {
     const alive = getAlivePlayers(state);
 
     if (state.pendingHunter) {
-      return this.isAi(state.pendingHunter) || !alive.some((p) => p.playerId === state.pendingHunter)
-        ? []
-        : [state.pendingHunter];
+      // 待开枪的猎人已阵亡（不在存活列表），但人类猎人仍需手动决定是否开枪
+      return this.isAi(state.pendingHunter) ? [] : [state.pendingHunter];
     }
 
     const pending: string[] = [];
     if (state.phase === 'night') {
       for (const p of alive) {
         if (this.isAi(p.playerId)) continue;
+        // 村民/猎人夜晚没有行动，不进入待行动列表（否则夜晚永远无法结算）
+        if (p.role !== 'werewolf' && p.role !== 'seer' && p.role !== 'witch') continue;
         const acted =
           (p.role === 'werewolf' && state.wolfVotes[p.playerId]) ||
           (p.role === 'seer' && state.seerCheckedTonight.length > 0) ||
@@ -259,6 +260,7 @@ export class WerewolfGame extends BaseGameEngine {
       if (me.role === 'werewolf' && !state.wolfVotes[playerId]) {
         const target = pick(getAlivePlayers(state).filter((p) => p.role !== 'werewolf'));
         if (target) applyWolfKill(state, playerId, target.playerId);
+        else state.wolfVotes[playerId] = '__pass__'; // 兜底：无可刀目标时弃刀，防止超时托管后反复挂起
       } else if (me.role === 'seer' && state.seerCheckedTonight.length === 0) {
         const target = pick(
           getAlivePlayers(state).filter((p) => p.playerId !== playerId),
@@ -338,6 +340,8 @@ export class WerewolfGame extends BaseGameEngine {
     for (const p of alive) {
       if (p.role === 'werewolf' && this.isAi(p.playerId) && !state.wolfVotes[p.playerId]) {
         const targetId = decideWolfKill({ state, aiPlayer: p });
+        // 兜底：极端情况下无可刀目标也要标记弃刀，防止声称已行动却毫无进展的空转
+        state.wolfVotes[p.playerId] = targetId ?? '__pass__';
         if (targetId) applyWolfKill(state, p.playerId, targetId);
         return true;
       }

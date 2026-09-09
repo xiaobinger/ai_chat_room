@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BarChart3, Filter, Plus, Search, Trophy, Users } from 'lucide-react';
+import { BarChart3, Filter, Plus, Search, Trash2, Trophy, Users } from 'lucide-react';
 import { api } from '../lib/api';
 import { Shell, Top, Notice, SectionHead } from '../components/Shell';
+import { useAuth } from '../context/AuthContext';
 
 interface GameStats {
   totalGames: number;
@@ -55,6 +56,7 @@ const STATUS_TYPES = [
 ];
 
 export default function EntertainmentLobby() {
+  const { user } = useAuth();
   const [rooms, setRooms] = useState<GameRoom[]>([]);
   const [stats, setStats] = useState<GameStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,6 +64,7 @@ export default function EntertainmentLobby() {
   const [search, setSearch] = useState('');
   const [gameTypeFilter, setGameTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [dissolving, setDissolving] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -75,6 +78,19 @@ export default function EntertainmentLobby() {
       .catch((e: unknown) => setProblem(e instanceof Error ? e.message : '加载失败'))
       .finally(() => setLoading(false));
   }, []);
+
+  const dissolveRoom = async (roomId: string) => {
+    if (!window.confirm('确定解散这个房间吗？所有游戏数据将被永久删除，无法恢复。')) return;
+    setDissolving(roomId);
+    try {
+      await api('DELETE', `/entertainment/rooms/${roomId}`);
+      setRooms((prev) => prev.filter((r) => r.id !== roomId));
+    } catch (e) {
+      setProblem(e instanceof Error ? `解散失败：${e.message}` : '解散失败');
+    } finally {
+      setDissolving(null);
+    }
+  };
 
   const filteredRooms = useMemo(() => {
     return rooms.filter((room) => {
@@ -189,6 +205,20 @@ export default function EntertainmentLobby() {
                   </span>
                 </small>
               </div>
+              {room.owner.id === user?.id && room.gameStatus !== 'playing' && (
+                <button
+                  className="link-danger"
+                  title="解散房间"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void dissolveRoom(room.id);
+                  }}
+                >
+                  <Trash2 size={16} />
+                  {dissolving === room.id ? '解散中…' : '解散'}
+                </button>
+              )}
             </Link>
           ))}
         </div>
