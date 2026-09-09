@@ -352,3 +352,268 @@ cite,.cite-list{display:block}
 .word-card.undercover b{color:#ff9b91}
 .link-danger{margin-left:auto;background:none;border:0;color:#ff758c;cursor:pointer;padding:4px;display:grid;place-items:center;border-radius:6px}
 .link-danger:hover{background:#2a1520}
+
+/* ===== 移动端全面适配 ===== */
+
+:root{
+  --safe-top:env(safe-area-inset-top,0px);
+  --safe-bottom:env(safe-area-inset-bottom,0px);
+  --safe-left:env(safe-area-inset-left,0px);
+  --safe-right:env(safe-area-inset-right,0px);
+}
+
+body{
+  padding-top:var(--safe-top);
+  padding-bottom:var(--safe-bottom);
+  padding-left:var(--safe-left);
+  padding-right:var(--safe-right);
+  -webkit-tap-highlight-color:transparent;
+  -webkit-touch-callout:none;
+  overscroll-behavior-y:contain;
+}
+
+button,a,input,textarea,select{
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+
+/* 平板及以下 */
+@media(max-width:768px){
+  /* 游戏主布局：左侧玩家列表改为顶部横向滚动 */
+  .game-layout{grid-template-columns:1fr;gap:12px}
+  .game-players{display:flex;gap:8px;overflow-x:auto;padding:12px;-webkit-overflow-scrolling:touch}
+  .game-players .agent{flex:0 0 auto;min-width:120px}
+  .game-players .panelhead{display:none}
+
+  /* 游戏工具栏：紧凑换行 */
+  .game-toolbar{gap:8px;padding:10px 12px}
+  .game-toolbar .phase-badge{font-size:11px;padding:6px 10px}
+  .game-toolbar .player-count{font-size:11px}
+  .game-toolbar .countdown{font-size:12px;padding:5px 10px}
+
+  /* 游戏头部换行 */
+  .game-header{flex-wrap:wrap;gap:10px;padding:14px}
+  .game-header .phase-desc{flex-basis:100%;order:3;font-size:11px}
+
+  /* 统计/筛选栏换行 */
+  .stats-bar{gap:8px}
+  .stat-card{min-width:calc(50% - 4px);padding:10px 12px}
+  .filter-bar{gap:8px}
+  .filter-group{flex:1;min-width:0}
+  .search-box{min-width:0}
+
+  /* 复盘概览改为两列 */
+  .review-overview{grid-template-columns:1fr 1fr}
+
+  /* 线索卡片两列 */
+  .clue-cards{grid-template-columns:1fr 1fr;gap:8px}
+  .clue-card{padding:10px}
+  .clue-name{font-size:11px}
+  .clue-desc,.clue-reveals{font-size:10px}
+
+  /* 角色卡紧凑 */
+  .role-card{padding:10px 14px}
+  .role-card b{font-size:15px}
+  .role-card p{font-size:11px}
+  .role-card.word b.my-word{font-size:22px}
+
+  /* 词卡揭示 */
+  .word-card{padding:10px 18px}
+  .word-card b{font-size:18px}
+
+  /* 投票按钮网格 */
+  .vote-options{gap:6px}
+  .vote-btn{padding:8px 12px;font-size:11px;flex:1 1 calc(50% - 6px)}
+
+  /* 玩家芯片 */
+  .player-chips{gap:6px}
+  .player-chip{padding:5px 8px;font-size:10px}
+  .player-avatar{width:22px;height:22px;font-size:9px}
+
+  /* 游戏区块内边距缩小 */
+  .game-section,.game-timeline,.action-panel,.narrative,.clues-section,.players-section,.actions-section{padding:12px}
+  .game-section h4,.action-panel h4{font-size:13px}
+  .timeline-content p{font-size:11px}
+
+  /* 案件简报 */
+  .case-brief{padding:12px}
+  .case-brief h4{font-size:13px}
+  .case-brief p{font-size:11px}
+
+  /* 信息块 */
+  .info-block{padding:10px 12px;font-size:11px}
+
+  /* 发言输入 */
+  .speech-input textarea{font-size:14px;min-height:70px}
+  .speech-actions{flex-wrap:wrap}
+  .action-btn{padding:10px 14px;font-size:12px;flex:1;min-height:40px;justify-content:center}
+
+  /* 胜者横幅 */
+  .winner-banner{font-size:14px;padding:14px}
+
+  /* 倒计时小屏 */
+  .countdown{font-size:11px;padding:5px 8px}
+
+  /* 阶段徽章 */
+  .phase-badge{font-size:11px;padding:6px 12px}
+  .phase-badge small{display:none}
+
+  /* 顶部栏 */
+  .top{padding:16px 20px;flex-wrap:wrap;gap:10px}
+  .top h1{font-size:20px}
+  .top .primary,.top .secondary{padding:9px 12px;font-size:12px}
+}
+
+/* 手机竖屏 */
+@media(max-width:480px){
+  .content{padding:14px}
+
+  /* 游戏工具栏：阶段+人数一行，倒计时独占 */
+  .game-toolbar{display:grid;grid-template-columns:1fr auto;gap:6px}
+  .game-toolbar .countdown{grid-column:1/-1;margin-left:0;justify-content:center}
+
+  /* 统计栏单列 */
+  .stats-bar{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .stat-card{min-width:0}
+
+  /* 筛选栏堆叠 */
+  .filter-bar{flex-direction:column}
+  .filter-group{width:100%}
+  .search-box{width:100%}
+
+  /* 复盘概览单列 */
+  .review-overview{grid-template-columns:1fr}
+
+  /* 线索卡单列 */
+  .clue-cards{grid-template-columns:1fr}
+
+  /* 投票按钮全宽 */
+  .vote-btn{flex:1 1 100%;min-height:42px}
+
+  /* 角色卡 */
+  .role-card{padding:10px}
+  .role-card b{font-size:14px}
+  .role-card.word b.my-word{font-size:20px}
+
+  /* 词卡堆叠 */
+  .word-reveal{flex-direction:column}
+  .word-card{width:100%}
+
+  /* 游戏结束 */
+  .game-over{padding:16px}
+  .game-over h3{font-size:20px}
+  .final-player{font-size:11px}
+
+  /* 发言输入 */
+  .speech-input textarea{font-size:15px;min-height:80px}
+  .action-btn{font-size:13px;min-height:44px}
+
+  /* 阶段徽章纯文字 */
+  .phase-badge{font-size:12px;padding:7px 14px}
+  .phase-badge svg{width:16px;height:16px}
+
+  /* 玩家列表横向滚动更小 */
+  .game-players .agent{min-width:100px}
+
+  /* 顶部栏 */
+  .top h1{font-size:18px}
+  .top p{font-size:11px;max-width:none}
+
+  /* 表单卡片 */
+  .formcard{padding:18px}
+  .formcard h2{font-size:22px}
+  .formcard label{font-size:11px}
+  .formcard input,.formcard textarea{font-size:14px}
+
+  /* 选择网格单列 */
+  .pickgrid,.agentpick,.budget{grid-template-columns:1fr}
+  .pick{padding:16px}
+  .pick b{font-size:13px}
+  .pick p{font-size:11px}
+
+  /* 操作栏全宽按钮 */
+  .actions{flex-direction:column;gap:8px}
+  .actions button{width:100%;justify-content:center}
+
+  /* Emoji 选择器全屏宽度 */
+  .emoji-picker{width:calc(100vw - 32px);left:-8px}
+  .emoji-grid{grid-template-columns:repeat(6,1fr)}
+
+  /* @提及选择器 */
+  .mention-picker{width:calc(100vw - 32px)}
+
+  /* 邀请行 */
+  .invite-row{flex-direction:column}
+  .invite-row button{width:100%}
+
+  /* 游戏头部 */
+  .game-header{padding:12px}
+  .game-header .phase-badge{order:1}
+  .game-header .my-role-badge{order:2;font-size:11px}
+  .game-header .phase-desc{order:3;font-size:10px}
+
+  /* 玩家芯片更小 */
+  .player-chip{padding:4px 6px;font-size:10px}
+  .player-avatar{width:20px;height:20px;font-size:8px}
+
+  /* 时间线 */
+  .timeline{padding-left:16px}
+  .timeline-dot{left:-13px}
+
+  /* 复盘时间线 */
+  .event-timeline{padding-left:20px}
+  .event-marker{left:-16px}
+  .event-content{padding:10px}
+  .event-text{font-size:11px}
+
+  /* 房间卡片 */
+  .roomcard{padding:14px;gap:10px}
+  .roomcard b{font-size:12px}
+  .roomcard p{font-size:10px}
+  .roomicon{width:36px;height:36px}
+
+  /* 英雄区 */
+  .hero{min-height:300px;padding:20px}
+  .hero h2{font-size:24px}
+  .hero p{font-size:12px}
+
+  /* 聊天页 */
+  .topicline{margin:8px 10px 0;padding:10px}
+  .topicline p{font-size:10px}
+  .messages{padding:14px 10px}
+  .message p{font-size:12px}
+
+  /* 成员卡片 */
+  .member{padding:8px}
+  .member b{font-size:11px}
+  .member small{font-size:9px}
+
+  /* 复盘评分 */
+  .score strong{font-size:48px}
+  .score{padding:18px}
+  .reviewcard{padding:16px}
+  .reviewcard li,.reviewcard p{font-size:12px}
+}
+
+/* 横屏手机优化 */
+@media(max-width:900px) and (orientation:landscape){
+  .top{height:auto;padding:12px 20px}
+  .top h1{font-size:18px}
+  .content{padding:16px 20px}
+  .hero{min-height:220px;padding:24px}
+  .hero h2{font-size:24px}
+  .game-toolbar{padding:8px 12px}
+  .game-section,.game-timeline,.action-panel{padding:10px}
+}
+
+/* 高对比度/无障碍：增大触摸目标 */
+@media(pointer:coarse){
+  button,.vote-btn,.pick,.agentpick button,.roomcard{min-height:44px}
+  .target-btn{min-height:32px;min-width:32px}
+  input,textarea,select{min-height:40px;font-size:16px}
+}
+
+/* 减少动画（低性能设备） */
+@media(prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
