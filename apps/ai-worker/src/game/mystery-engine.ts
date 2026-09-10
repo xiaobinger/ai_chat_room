@@ -11,13 +11,17 @@ import { MYSTERY_SCENARIOS } from './mystery-types';
 const pick = <T>(list: T[]): T | undefined =>
   list.length > 0 ? list[Math.floor(Math.random() * list.length)] : undefined;
 
-/** 分配角色（使用指定剧本的专属角色池） */
+/** 分配角色（使用指定剧本的专属角色池，绝不重复） */
 export function assignMysteryRoles(
   playerIds: string[],
   scenario: MysteryScenario,
 ): { characters: Record<string, CharacterCard>; murdererId: string; policeId: string } {
-  // 从剧本角色池中打乱后选取与玩家数相等的角色（若不够则循环取用）
-  const shuffledChars = [...scenario.characters].sort(() => Math.random() - 0.5);
+  // 角色必须够分，否则抛出（由调用方确保选择够角色的剧本）
+  if (scenario.characters.length < playerIds.length) {
+    throw new Error(`剧本角色不足：需要 ${playerIds.length} 个，剧本只有 ${scenario.characters.length} 个`);
+  }
+  // 打乱后选取与玩家数相等的角色（不取模，保证不重复）
+  const shuffledChars = [...scenario.characters].sort(() => Math.random() - 0.5).slice(0, playerIds.length);
 
   const characters: Record<string, CharacterCard> = {};
   let murdererId = '';
@@ -26,7 +30,7 @@ export function assignMysteryRoles(
   const murdererIndex = Math.floor(Math.random() * playerIds.length);
 
   playerIds.forEach((playerId, index) => {
-    const charTemplate = shuffledChars[index % shuffledChars.length];
+    const charTemplate = shuffledChars[index];
     const isMurderer = index === murdererIndex;
     const character: CharacterCard = {
       ...charTemplate,
@@ -77,7 +81,10 @@ export function initMysteryState(
   players: { playerId: string; nickname: string }[],
 ): MysteryGameState {
   // 先选剧本，再用剧本自带的角色和线索
-  const scenario = MYSTERY_SCENARIOS[Math.floor(Math.random() * MYSTERY_SCENARIOS.length)];
+  // 只从角色数 >= 玩家数的剧本中随机选择（避免角色不足）
+  const eligibleScenarios = MYSTERY_SCENARIOS.filter((s) => s.characters.length >= players.length);
+  const pool = eligibleScenarios.length > 0 ? eligibleScenarios : MYSTERY_SCENARIOS;
+  const scenario = pool[Math.floor(Math.random() * pool.length)];
   const { characters, murdererId, policeId } = assignMysteryRoles(players.map((p) => p.playerId), scenario);
 
   const playerStates: MysteryPlayerState[] = players.map((p) => ({

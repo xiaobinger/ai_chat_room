@@ -26,6 +26,46 @@ const SPEECH_DEADLINE_MS = 60_000;
 const SEARCH_DEADLINE_MS = 45_000;
 const VOTE_DEADLINE_MS = 45_000;
 
+/** 生成随机多结局（每个结局逻辑不同但都符合案件设定） */
+function generateEpilogues(props: {
+  murdererName: string;
+  victim: string;
+  weapon: string;
+  caught: boolean;
+  corruptPoliceName?: string;
+  monologue?: { finalWords: string; emotion: string };
+}): string[] {
+  const { murdererName, victim, weapon, caught, corruptPoliceName } = props;
+
+  if (caught) {
+    const endings = [
+      `【结案】${murdererName}被当场指认为凶手，铁证如山。在审讯室里，${murdererName}崩溃了，交代了用${weapon}杀害${victim}的全部经过。案件告破，正义得到了伸张。`,
+      `【真相】${murdererName}的伪装在最后一刻崩塌。当众人将手铐戴上${murdererName}的手腕时，${murdererName}终于承认：${victim}的死，就是一场蓄谋已久的谋杀。`,
+      `【落幕】${murdererName}面对众人的指控，出人意料地露出了微笑："你们猜对了。"一切的谜团就此解开，${victim}的冤魂得以安息。`,
+      `【破案】经过层层推理，所有证据都指向${murdererName}。在无可辩驳的事实面前，${murdererName}低下了头，轻声说道："${victim}……对不起。"`,
+    ];
+    if (corruptPoliceName) {
+      endings.push(
+        `【黑幕】不仅${murdererName}被绳之以法，警方内部的黑警${corruptPoliceName}也一并落网。原来这对"警匪"早已勾结，但最终还是难逃法网。`,
+      );
+    }
+    return endings;
+  }
+
+  const endings = [
+    `【追凶】${murdererName}在最后一刻成功逃脱，但留下了致命的破绽。警方已经锁定目标，天罗地网已然布下……（未完待续）`,
+    `【未落网】众人指认了错误的目标，${murdererName}趁乱消失在夜色中。但在${murdererName}的房间里，警方发现了一封未寄出的信，上面写着事情的真相……`,
+    `【悬案】这起案件成了悬案，${murdererName}逍遥法外。直到三年后，一桩新的案件揭开了陈年的秘密……`,
+    `【逃逸】${murdererName}利用众人争论的空档悄然离开。但天网恢恢，疏而不漏，${victim}的鬼魂似乎仍在注视着这一切……`,
+  ];
+  if (corruptPoliceName) {
+    endings.push(
+      `【勾结】${murdererName}在黑警${corruptPoliceName}的掩护下顺利脱身。但这条利益链条迟早会断裂，两人都逃不过命运的安排……`,
+    );
+  }
+  return endings;
+}
+
 /** 侦探观察素材池 */
 const OBSERVABLE_BEHAVIORS = [
   { action: '频繁看手表，似乎在计算什么时间', implication: '可能在等待某个时机，或对时间线非常敏感', suspicious: true, delta: 1 },
@@ -89,15 +129,22 @@ export class MysteryGame extends BaseGameEngine {
         role: p.character.isMurderer ? '凶手' : p.character.isPolice ? (p.character.isCorrupt ? '黑警' : '警察') : p.character.name,
       };
     }
-    // 彩蛋：无论胜负，最终真相大白——凶手（及黑警）终将伏法
+    // 随机多结局：根据凶手是否被抓住 + 是否黑警 + 随机叙事风格生成不同结局
     if (this.state.phase === 'reveal') {
       const murderer = this.state.players.find((p) => p.character.isMurderer);
       const corruptPolice = this.state.players.find((p) => p.character.isPolice && p.character.isCorrupt);
-      let epilogue = `【彩蛋】天网恢恢，疏而不漏。${murderer?.character.name}虽${winner === 'murderer' ? '一度逃脱指控' : '被当场擒获'}，但在后续调查中，铁证如山，${murderer?.character.name}最终被绳之以法，受到了法律的严惩。`;
-      if (corruptPolice) {
-        epilogue += ` 而与凶手勾结的${corruptPolice.character.name}也因受贿、包庇罪被一并查处，锒铛入狱。`;
-      }
-      epilogue += ` ${this.state.victim}的在天之灵，终得告慰。`;
+      const caught = winner === 'detectives';
+
+      const endings = generateEpilogues({
+        murdererName: murderer?.character.name ?? '凶手',
+        victim: this.state.victim,
+        weapon: this.state.murderWeapon,
+        caught,
+        corruptPoliceName: corruptPolice?.character.name,
+        monologue: this.state.monologue,
+      });
+
+      const epilogue = endings[Math.floor(Math.random() * endings.length)];
       this.state.events.push({
         id: crypto.randomUUID(),
         round: this.state.round,
