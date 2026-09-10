@@ -19,6 +19,11 @@ function shuffle<T>(list: T[]): T[] {
   return copy;
 }
 
+function getSeatNumber(state: ThiefGameState, playerId: string): number | null {
+  const index = state.players.findIndex((player) => player.playerId === playerId);
+  return index >= 0 ? index + 1 : null;
+}
+
 /** 根据玩家数量分配角色 */
 export function assignThiefRoles(playerIds: string[]): Record<string, ThiefRole> {
   const count = playerIds.length;
@@ -81,7 +86,7 @@ export function getCitizenTeam(state: ThiefGameState): ThiefPlayerState[] {
 export function initThiefGameState(
   players: { playerId: string; nickname: string }[],
 ): ThiefGameState {
-  if (players.length < 4) throw new GameError('not_enough_players', '谁是凶手至少需要 4 名玩家');
+  if (players.length < 4) throw new GameError('not_enough_players', '谁是小偷至少需要 4 名玩家');
 
   const assignments = assignThiefRoles(players.map((p) => p.playerId));
   const playerStates: ThiefPlayerState[] = players.map((p) => ({
@@ -126,7 +131,7 @@ export function initThiefGameState(
         round: 1,
         phase: 'investigation',
         type: 'game_start',
-        content: `案件通报：${crimeScene}失窃物品：${stolenItem}。小偷就藏在我们 ${players.length} 个人之中，请大家轮流发言，找出真凶！`,
+        content: `案件通报：${crimeScene}失窃物品：${stolenItem}。小偷就藏在我们 ${players.length} 个人之中，请大家轮流发言，找出真正的小偷！`,
         timestamp: Date.now(),
       },
     ],
@@ -548,6 +553,7 @@ export function getThiefView(state: ThiefGameState, playerId: string | null) {
     players: state.players.map((p) => ({
       playerId: p.playerId,
       nickname: p.nickname,
+      seatNumber: getSeatNumber(state, p.playerId),
       isAlive: p.isAlive,
       role: finished ? p.role : p.playerId === playerId ? p.role : undefined,
       isMe: p.playerId === playerId,

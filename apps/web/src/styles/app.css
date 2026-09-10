@@ -216,7 +216,7 @@ cite,.cite-list{display:block}
 .mention-badge.ai{background:#7457ff;color:#fff}
 .mention-real{font-size:10px;color:#777;margin-left:auto}
 
-/* 谁是凶手游戏 */
+/* 谁是小偷游戏 */
 .thief-game{display:grid;gap:20px}
 .game-header{display:flex;align-items:center;gap:16px;padding:16px;background:linear-gradient(135deg,#1a1520,#0d0e13);border:1px solid #2e2943;border-radius:12px}
 .phase-badge{display:flex;align-items:center;gap:8px;padding:8px 16px;background:#7457ff;border-radius:8px;font-weight:700}
@@ -344,6 +344,19 @@ cite,.cite-list{display:block}
 .case-brief h4{margin:0 0 8px;font-size:14px;color:#ececf2}
 .case-brief p{margin:4px 0;font-size:12px;color:#8e90a0;line-height:1.5}
 .case-brief b{color:#ffbd75}
+.case-dossier{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px;border-radius:12px;background:linear-gradient(135deg,#21162c,#0d0e13);border:1px solid #3d2f56}
+.case-dossier small{font-size:10px;color:#ad9eff;letter-spacing:1px}
+.case-dossier h3{margin:4px 0 8px;font-size:20px;color:#ececf2}
+.case-dossier p{margin:0;font-size:12px;color:#8e90a0;max-width:560px;line-height:1.6}
+.case-stats{display:flex;gap:10px;flex-wrap:wrap}
+.case-stat{min-width:92px;padding:10px 12px;border-radius:10px;background:#13141a;border:1px solid #2e2943;display:grid;gap:4px}
+.case-stat span{font-size:10px;color:#8e90a0}
+.case-stat b{font-size:18px;color:#ffbd75}
+.suspect-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.suspect-item{display:grid;gap:4px;padding:12px;border-radius:10px;background:#13141a;border:1px solid #2e2943}
+.suspect-item b{font-size:13px;color:#ececf2}
+.suspect-item span{font-size:11px;color:#8ec9ff}
+.suspect-item small{font-size:10px;color:#ffbd75}
 .word-reveal{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
 .word-card{padding:14px 28px;border-radius:12px;border:1px solid;text-align:center;display:grid;gap:4px}
 .word-card small{font-size:10px;color:#8e90a0}
@@ -441,6 +454,11 @@ button,a,input,textarea,select{
   .case-brief{padding:12px}
   .case-brief h4{font-size:13px}
   .case-brief p{font-size:11px}
+  .case-dossier{padding:12px;gap:12px}
+  .case-dossier h3{font-size:16px}
+  .case-dossier p{font-size:11px}
+  .case-stat{min-width:80px;padding:8px 10px}
+  .suspect-board{grid-template-columns:1fr}
 
   /* 信息块 */
   .info-block{padding:10px 12px;font-size:11px}

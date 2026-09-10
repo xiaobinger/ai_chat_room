@@ -6,12 +6,15 @@ import { Crown, MessageSquareQuote, Moon, Skull, Sun, Timer, Vote as VoteIcon, U
 export interface GamePlayerView {
   playerId: string;
   nickname: string;
+  seatNumber?: number;
   isAlive: boolean;
   role?: string;
+  roleLabel?: string;
   isMe?: boolean;
   hasDescribed?: boolean;
   hasSpoken?: boolean;
   hasSearched?: boolean;
+  suspicionLevel?: number;
   character?: { name?: string; role?: string; personality?: string };
   word?: string;
 }
@@ -140,6 +143,22 @@ export function PlayerChips({
   currentSpeakerId?: string | null;
   showRoles?: boolean;
 }) {
+  const roleLabels: Record<string, string> = {
+    werewolf: '狼人',
+    villager: '村民',
+    seer: '预言家',
+    witch: '女巫',
+    hunter: '猎人',
+    thief: '小偷',
+    detective: '侦探',
+    citizen: '普通市民',
+    master_thief: '神偷',
+    accomplice: '同伙',
+    witness: '目击者',
+    civilian: '平民',
+    undercover: '卧底',
+  };
+
   return (
     <div className="player-chips">
       {players.map((p) => (
@@ -148,9 +167,10 @@ export function PlayerChips({
           className={`player-chip ${!p.isAlive ? 'dead' : ''} ${currentSpeakerId === p.playerId ? 'speaking' : ''} ${p.isMe ? 'me' : ''}`}
         >
           <span className="player-avatar">{p.nickname.slice(0, 1)}</span>
+          {p.seatNumber && <span className="chip-tag">{p.seatNumber}号</span>}
           <span className="player-name">{p.nickname}</span>
           {p.isMe && <span className="chip-tag me">我</span>}
-          {showRoles && p.role && <span className="chip-tag role">{p.role}</span>}
+          {showRoles && p.role && <span className="chip-tag role">{p.roleLabel ?? roleLabels[p.role] ?? p.role}</span>}
           {showRoles && p.character?.name && <span className="chip-tag role">{p.character.name}</span>}
           {currentSpeakerId === p.playerId && <span className="chip-tag active">发言中</span>}
           {!p.isAlive && <span className="chip-tag dead">出局</span>}
@@ -287,6 +307,7 @@ export function VoteGrid({
             onClick={() => onVote(p.playerId)}
           >
             <span className="player-avatar small">{p.nickname.slice(0, 1)}</span>
+            {p.seatNumber ? `${p.seatNumber}号 ` : ''}
             {p.nickname}
           </button>
         ))}

@@ -40,7 +40,7 @@ interface GameReviewData {
 const GAME_LABELS: Record<string, string> = {
   werewolf: '狼人杀',
   murder_mystery: '剧本杀',
-  who_is_the_thief: '谁是凶手',
+  who_is_the_thief: '谁是小偷',
   who_is_undercover: '谁是卧底',
 };
 

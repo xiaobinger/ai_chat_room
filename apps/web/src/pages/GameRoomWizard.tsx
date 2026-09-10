@@ -7,7 +7,7 @@ const GAMES = [
   { id: 'werewolf', label: '狼人杀', min: 6, max: 12, desc: '经典身份推理游戏，狼人潜伏在村民中，夜晚杀人，白天投票。' },
   { id: 'who_is_undercover', label: '谁是卧底', min: 4, max: 12, desc: '每人描述自己的词，平民词相同、卧底词不同，投票揪出卧底。' },
   { id: 'murder_mystery', label: '剧本杀', min: 4, max: 8, desc: '沉浸式角色扮演，每人扮演一个角色，推理找出真凶。' },
-  { id: 'who_is_the_thief', label: '谁是凶手', min: 4, max: 10, desc: '侦探与小偷的博弈，调查、发言、投票找出小偷。' },
+  { id: 'who_is_the_thief', label: '谁是小偷', min: 4, max: 10, desc: '轻推理社交局，侦探与市民协作，调查、发言、投票找出小偷。' },
 ];
 
 export default function GameRoomWizard() {

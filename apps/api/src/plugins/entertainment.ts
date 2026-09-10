@@ -15,7 +15,7 @@ interface GameActionBody {
 const GAME_CONFIGS: Record<GameTypeStr, { min: number; max: number; label: string }> = {
   werewolf: { min: 6, max: 12, label: '狼人杀' },
   murder_mystery: { min: 4, max: 8, label: '剧本杀' },
-  who_is_the_thief: { min: 4, max: 10, label: '谁是凶手' },
+  who_is_the_thief: { min: 4, max: 10, label: '谁是小偷' },
   who_is_undercover: { min: 4, max: 12, label: '谁是卧底' },
 };
 

@@ -33,6 +33,7 @@ interface MysteryClue {
 }
 
 interface MysteryViewState extends GameViewState {
+  scenarioTitle?: string;
   victim?: string;
   crimeScene?: string;
   murderWeapon?: string;
@@ -71,6 +72,12 @@ export function MysteryView({
   const me = view.players.find((p) => p.playerId === myPlayerId);
   const iHaveSpoken = me?.hasSpoken ?? false;
   const iHaveSearched = me?.hasSearched ?? false;
+  const keyClueCount = (view.discoveredClues ?? []).filter((clue) => clue.isKey).length;
+  const remainingClues = Math.max((view.totalClueCount ?? 0) - (view.discoveredClues?.length ?? 0), 0);
+  const suspectBoard = [...view.players]
+    .filter((player) => player.isAlive && typeof player.suspicionLevel === 'number')
+    .sort((a, b) => (b.suspicionLevel ?? 0) - (a.suspicionLevel ?? 0))
+    .slice(0, 3);
 
   return (
     <div className="game-view mystery">
@@ -82,6 +89,28 @@ export function MysteryView({
         </span>
         <PlayerCount players={view.players} />
         <Countdown deadline={finished ? null : deadline} onExpire={refresh} />
+      </div>
+
+      <div className="case-dossier">
+        <div>
+          <small>案件档案</small>
+          <h3>{view.scenarioTitle ?? '未命名案件'}</h3>
+          <p>{view.crimeScene}</p>
+        </div>
+        <div className="case-stats">
+          <div className="case-stat">
+            <span>已发现线索</span>
+            <b>{view.discoveredClues?.length ?? 0}</b>
+          </div>
+          <div className="case-stat">
+            <span>剩余线索</span>
+            <b>{remainingClues}</b>
+          </div>
+          <div className="case-stat">
+            <span>关键线索</span>
+            <b>{keyClueCount}</b>
+          </div>
+        </div>
       </div>
 
       {finished && view.winner && (
@@ -112,6 +141,24 @@ export function MysteryView({
           </p>
           <p className="objective">目标：{view.myCharacter.objective}</p>
           <p className="alibi">不在场证明：{view.myCharacter.alibi}</p>
+        </div>
+      )}
+
+      {suspectBoard.length > 0 && !finished && (
+        <div className="game-section">
+          <h4>当前嫌疑榜</h4>
+          <div className="suspect-board">
+            {suspectBoard.map((player) => (
+              <div key={player.playerId} className="suspect-item">
+                <b>
+                  {player.seatNumber ? `${player.seatNumber}号 ` : ''}
+                  {player.nickname}
+                </b>
+                <span>{player.character?.name ?? '未知身份'}</span>
+                <small>嫌疑值 {player.suspicionLevel ?? 0}</small>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -195,6 +242,9 @@ export function MysteryView({
             {(view.discussionLog ?? []).map((entry, index) => (
               <div key={index} className="day-message">
                 <b>
+                  {view.players.find((p) => p.playerId === entry.playerId)?.seatNumber
+                    ? `${view.players.find((p) => p.playerId === entry.playerId)?.seatNumber}号 `
+                    : ''}
                   {entry.playerName}（{entry.characterName}）：
                 </b>
                 <span>{entry.content}</span>

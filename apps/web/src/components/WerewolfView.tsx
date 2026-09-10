@@ -39,7 +39,11 @@ interface WerewolfViewState extends GameViewState {
   seerChecks?: { round: number; targetName: string; isWerewolf: boolean }[];
   witchPotions?: { save: boolean; poison: boolean };
   witchActed?: boolean;
+  witchCanAct?: boolean;
+  witchCanSave?: boolean;
+  witchNightStatus?: 'waiting_wolves' | 'known_victim' | 'self_target' | 'no_save_potion' | 'no_victim';
   nightVictim?: string | null;
+  nightVictimSeatNumber?: number | null;
   dayMessages?: { playerId: string; nickname: string; content: string; timestamp: number }[];
   speechStatus?: Record<string, 'spoken' | 'skipped'>;
   voteStatus?: Record<string, 'voted' | 'abstained'>;
@@ -115,7 +119,10 @@ export function WerewolfView({
             {view.players.map((p) => (
               <div key={p.playerId} className={`player-chip ${!p.isAlive ? 'dead' : ''}`}>
                 <span className="player-avatar">{p.nickname.slice(0, 1)}</span>
-                <span className="player-name">{p.nickname}</span>
+                <span className="player-name">
+                  {p.seatNumber ? `${p.seatNumber}号 ` : ''}
+                  {p.nickname}
+                </span>
                 {p.role && <span className="chip-tag role">{ROLE_LABELS[p.role] ?? p.role}</span>}
                 {!p.isAlive && <span className="chip-tag dead">出局</span>}
               </div>
@@ -126,7 +133,8 @@ export function WerewolfView({
             {view.nightVictim != null && (
               <p>
                 <b>今晚被刀：</b>
-                {view.nightVictim || '（暂无）'}
+                {view.nightVictimSeatNumber ? `${view.nightVictimSeatNumber}号` : '（暂无）'}
+                {view.nightVictim ? ` · ${view.nightVictim}` : ''}
               </p>
             )}
             {view.witchPotions && (
@@ -182,6 +190,7 @@ export function WerewolfView({
                   .map((p) => (
                     <button key={p.playerId} className="vote-btn danger" onClick={() => void act('werewolf_kill', { targetId: p.playerId })}>
                       <span className="player-avatar small">{p.nickname.slice(0, 1)}</span>
+                      {p.seatNumber ? `${p.seatNumber}号 ` : ''}
                       {p.nickname}
                     </button>
                   ))}
@@ -200,6 +209,7 @@ export function WerewolfView({
                   .map((p) => (
                     <button key={p.playerId} className="vote-btn" onClick={() => void act('seer_check', { targetId: p.playerId })}>
                       <span className="player-avatar small">{p.nickname.slice(0, 1)}</span>
+                      {p.seatNumber ? `${p.seatNumber}号 ` : ''}
                       {p.nickname}
                     </button>
                   ))}
@@ -207,19 +217,45 @@ export function WerewolfView({
             </div>
           )}
 
-          {myRole === 'witch' && canAct && !view.witchActed && (
+          {myRole === 'witch' && canAct && !view.witchActed && view.witchCanAct && (
             <div className="witch-panel">
               <p>
-                <FlaskConical size={14} /> 今晚倒下的人：
-                <b>{view.nightVictim ?? '（待狼人行动）'}</b>
+                <FlaskConical size={14} />
+                {view.witchNightStatus === 'known_victim' && (
+                  <>
+                    今晚被杀的是：
+                    <b>
+                      {view.nightVictimSeatNumber ? `${view.nightVictimSeatNumber}号` : ''}
+                      {view.nightVictim ? ` ${view.nightVictim}` : ''}
+                    </b>
+                  </>
+                )}
+                {view.witchNightStatus === 'self_target' && (
+                  <>
+                    法官今夜没有报号。
+                    <b>这通常表示你自己就是被杀目标。</b>
+                  </>
+                )}
+                {view.witchNightStatus === 'no_save_potion' && (
+                  <>
+                    解药已用完。
+                    <b>本夜你不会获知被杀玩家。</b>
+                  </>
+                )}
+                {view.witchNightStatus === 'no_victim' && (
+                  <>
+                    今夜暂未出现被杀信息。
+                    <b>你仍可决定是否使用毒药。</b>
+                  </>
+                )}
               </p>
               <div className="witch-potions">
                 <button
                   className="action-btn primary"
-                  disabled={!view.witchPotions?.save || !view.nightVictim}
+                  disabled={!view.witchCanSave}
                   onClick={() => void act('witch_save')}
                 >
-                  <Shield size={14} /> 使用解药救人
+                  <Shield size={14} /> {view.witchNightStatus === 'self_target' ? '使用解药自救' : '使用解药救人'}
                 </button>
                 <div className="poison-select">
                   <select id="poison-target" defaultValue="" disabled={!view.witchPotions?.poison}>
@@ -230,6 +266,7 @@ export function WerewolfView({
                       .filter((p) => p.playerId !== myPlayerId)
                       .map((p) => (
                         <option key={p.playerId} value={p.playerId}>
+                          {p.seatNumber ? `${p.seatNumber}号 ` : ''}
                           {p.nickname}
                         </option>
                       ))}
@@ -253,6 +290,9 @@ export function WerewolfView({
             </div>
           )}
 
+          {myRole === 'witch' && canAct && !view.witchActed && !view.witchCanAct && (
+            <p className="hint">等待狼人行动结束后，法官再向你通报夜晚信息……</p>
+          )}
           {(myRole === 'villager' || myRole === 'hunter' || view.myNightActionDone || view.witchActed) && !isJudge && (
             <p className="hint">夜深了，等待其他玩家行动……</p>
           )}
@@ -274,6 +314,7 @@ export function WerewolfView({
               .map((p) => (
                 <button key={p.playerId} className="vote-btn danger" onClick={() => void act('hunter_shoot', { targetId: p.playerId })}>
                   <span className="player-avatar small">{p.nickname.slice(0, 1)}</span>
+                  {p.seatNumber ? `${p.seatNumber}号 ` : ''}
                   {p.nickname}
                 </button>
               ))}

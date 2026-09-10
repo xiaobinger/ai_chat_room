@@ -11,6 +11,11 @@ import { MYSTERY_SCENARIOS } from './mystery-types';
 const pick = <T>(list: T[]): T | undefined =>
   list.length > 0 ? list[Math.floor(Math.random() * list.length)] : undefined;
 
+function getSeatNumber(state: MysteryGameState, playerId: string): number | null {
+  const index = state.players.findIndex((player) => player.playerId === playerId);
+  return index >= 0 ? index + 1 : null;
+}
+
 /** 分配角色（使用指定剧本的专属角色池，绝不重复） */
 export function assignMysteryRoles(
   playerIds: string[],
@@ -576,9 +581,11 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
       players: state.players.map((p) => ({
         playerId: p.playerId,
         nickname: p.nickname,
+        seatNumber: getSeatNumber(state, p.playerId),
         character: { name: p.character.name, role: p.character.role },
         isAlive: p.isAlive,
         isPolice: p.character.isPolice,
+        suspicionLevel: p.suspicionLevel,
       })),
       winner: state.winner,
       events: state.events,
@@ -604,6 +611,7 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
     players: state.players.map((p) => ({
       playerId: p.playerId,
       nickname: p.nickname,
+      seatNumber: getSeatNumber(state, p.playerId),
       character: {
         name: p.character.name,
         role: p.character.role,
@@ -616,6 +624,7 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
       isMe: p.playerId === playerId,
       hasSpoken: p.hasSpoken,
       hasSearched: p.hasSearched,
+      suspicionLevel: p.suspicionLevel,
     })),
     murdererId: finished ? state.murdererId : undefined,
     accusedMurdererId: state.accusedMurdererId,

@@ -472,6 +472,80 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 - `pnpm test`：109 测试全绿（ai-worker 78 + api 31）
 - `pnpm lint`：0 errors
 
+## 2026-09-10：狼人杀女巫规则修正 + 身份标签中文化
+
+### 关键事件
+- **女巫夜晚顺序修正**：`WerewolfGame.pendingHumans()` 不再让人类女巫在狼人行动前提前进入待行动列表；女巫夜晚面板会先等待狼人行动结束，再进入是否用药决策
+- **女巫报号规则修正**：`getPlayerView()` 新增女巫夜晚状态字段，解药未用且刀口不是自己时才展示被杀玩家；若法官不报号，则前端改为提示“可能是你自己被杀”，同时仍允许女巫自救；解药用完后不再暴露刀口
+- **身份中文化兜底**：通用 `PlayerChips` 组件新增跨游戏角色枚举到中文标签的统一映射，终局“最终身份”和玩家身份标识不再显示 `werewolf` / `witch` / `undercover` 等英文枚举
+
+### 技术细节
+- 后端文件：`apps/ai-worker/src/game/werewolf-engine.ts`、`apps/ai-worker/src/game/werewolf-game.ts`
+- 前端文件：`apps/web/src/components/WerewolfView.tsx`、`apps/web/src/components/game-parts.tsx`
+- 回归测试：`apps/ai-worker/src/__tests__/games.test.ts` 新增 3 条用例，覆盖“女巫等待狼人后再行动”“女巫被刀不报号但可自救”“解药用完后不再知道刀口”
+
+### 验证
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：全仓测试通过
+- `pnpm lint`：0 errors，保留既有 `console` warnings
+
+## 2026-09-10：狼人杀座位号体系 + AI 法官分阶段主持
+
+### 关键事件
+- **夜晚主持词升级**：`aiJudgeBroadcast()` 从“整夜一条固定文案”升级为按子阶段切换，依次播报狼人、预言家、女巫和夜晚结束提示；女巫阶段会结合真实规则，在解药未用时按座位号报号，被刀目标若是女巫本人则改为“不报号”文案
+- **座位号体系落地**：狼人杀玩家/法官视角统一补充 `seatNumber`，前端玩家卡片、夜晚目标按钮、猎人开枪、女巫提示全面显示“几号玩家”，让主持词与界面信息一致
+- **3D 演进预埋**：座位号成为稳定 UI 锚点，为后续做 3D 房间站位、镜头切换、空间语音法官播报保留基础数据层
+
+### 技术细节
+- 后端文件：`apps/ai-worker/src/game/werewolf-engine.ts`
+- 前端文件：`apps/web/src/components/WerewolfView.tsx`、`apps/web/src/components/game-parts.tsx`
+- 回归测试：`apps/ai-worker/src/__tests__/games.test.ts` 新增主持词切换与座位号用例，覆盖 AI 法官夜晚子阶段播报和女巫看到的刀口座位号
+
+### 验证
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：全仓测试通过
+- `pnpm lint`：0 errors，保留既有 `console` warnings
+
+## 2026-09-10：狼人杀 AI 推理策略升级
+
+### 关键事件
+- **狼人 AI 更像真人**：狼人夜晚不再主要随机刀人，而是优先处理公开跳预言家的玩家；若无人对跳，则更偏向刀掉场上更有带队影响力的好人位
+- **预言家/女巫/平民判断增强**：预言家优先查验对跳位和高嫌疑玩家；女巫被刀时优先自救，遇到关键好人位更倾向救人，场上对跳混乱或高嫌疑时才更愿意下毒；平民/猎人/女巫白天投票会优先处理预言家对跳和公开压力最高的目标
+- **白天发言去模板化**：AI 发言开始结合昨夜结果、场上对跳、最高嫌疑对象来表达观点，不再反复输出空泛模板句
+
+### 技术细节
+- 核心策略文件：`apps/ai-worker/src/game/ai-decision.ts`
+- 回归测试文件：`apps/ai-worker/src/__tests__/games.test.ts`
+- 新增策略测试：狼人优先刀跳预言家、预言家优先查对跳、女巫被刀优先自救、平民在对跳时优先投对跳位
+
+### 验证
+- `pnpm --filter @tianma/ai-worker test -- src/__tests__/games.test.ts`：28 测试全绿
+- `pnpm --filter @tianma/ai-worker typecheck`：通过
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：全仓测试通过
+- `pnpm lint`：0 errors，保留既有 `console` warnings
+
+## 2026-09-10：多游戏 3D 基础预埋 + 谁是小偷正名 + 剧本杀档案增强
+
+### 关键事件
+- **多游戏座位号统一**：为谁是小偷、剧本杀、谁是卧底的玩家视角补充 `seatNumber`，共享投票按钮和玩家卡片统一显示“几号玩家”，为后续 3D 圆桌站位、镜头聚焦和空间发言顺序提供一致锚点
+- **产品定位纠偏**：将 `who_is_the_thief` 在前端大厅、房间页、创建向导、复盘页和 API 配置中的对外名称统一改为“谁是小偷”，不再把小偷局错误包装成“谁是凶手”
+- **剧本杀案件感增强**：`MysteryView` 新增案件档案区、案名、线索进度、关键线索数和嫌疑榜，让剧本杀从视觉和信息结构上更像“找凶手”的沉浸式案件推理，而不是轻量社交局
+
+### 技术细节
+- 后端文件：`apps/ai-worker/src/game/mystery-engine.ts`、`apps/ai-worker/src/game/who-is-the-thief-engine.ts`、`apps/ai-worker/src/game/who-is-undercover-engine.ts`
+- 前端文件：`apps/web/src/components/MysteryView.tsx`、`apps/web/src/components/ThiefGameView.tsx`、`apps/web/src/components/UndercoverView.tsx`、`apps/web/src/components/game-parts.tsx`
+- 命名同步：`apps/web/src/pages/EntertainmentLobby.tsx`、`apps/web/src/pages/GameRoom.tsx`、`apps/web/src/pages/GameRoomWizard.tsx`、`apps/web/src/pages/GameReview.tsx`、`apps/api/src/plugins/entertainment.ts`
+- 回归测试：`apps/ai-worker/src/__tests__/games.test.ts` 新增多游戏座位号与剧本杀视图字段用例
+
+### 验证
+- `pnpm --filter @tianma/ai-worker test -- src/__tests__/games.test.ts`：31 测试全绿
+- `pnpm --filter @tianma/ai-worker typecheck`：通过
+- `pnpm --filter @tianma/web typecheck`：通过
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：全仓测试通过
+- `pnpm lint`：0 errors，保留既有 `console` warnings
+
 ## 经验教训
 1. Windows 环境下工作区路径处理需要特别小心，`\\?\` 前缀会导致 CMD 和部分 Node 工具异常
 2. 后台进程管理在受限沙箱中不可靠，优先让用户本地终端常驻服务

@@ -47,6 +47,11 @@ function findPlayer(state: UndercoverGameState, playerId: string): UndercoverPla
   return player;
 }
 
+function getSeatNumber(state: UndercoverGameState, playerId: string): number | null {
+  const index = state.players.findIndex((player) => player.playerId === playerId);
+  return index >= 0 ? index + 1 : null;
+}
+
 export function getAlivePlayers(state: UndercoverGameState): UndercoverPlayerState[] {
   return state.players.filter((p) => p.isAlive);
 }
@@ -441,6 +446,7 @@ export function getUndercoverView(state: UndercoverGameState, playerId: string |
     players: state.players.map((p) => ({
       playerId: p.playerId,
       nickname: p.nickname,
+      seatNumber: getSeatNumber(state, p.playerId),
       isAlive: p.isAlive,
       role: finished ? p.role : undefined,
       word: finished ? p.word : undefined,

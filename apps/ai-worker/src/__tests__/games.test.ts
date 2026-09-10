@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { GameError } from '../game/errors';
+import { decideSeerCheck, decideVote, decideWitchAction, decideWolfKill } from '../game/ai-decision';
 import { UndercoverGame } from '../game/undercover-game';
 import { WerewolfGame } from '../game/werewolf-game';
 import { ThiefGame } from '../game/thief-game';
 import { MysteryGame } from '../game/mystery-game';
+import { aiJudgeBroadcast } from '../game/werewolf-engine';
+import type { GameState } from '../game/types';
 import type { GamePlayerInfo } from '../game/errors';
 
 function aiPlayers(count: number): GamePlayerInfo[] {
@@ -12,6 +15,16 @@ function aiPlayers(count: number): GamePlayerInfo[] {
     nickname: `玩家${i + 1}`,
     isAi: true,
   }));
+}
+
+function withMockedRandom<T>(value: number, fn: () => T): T {
+  const original = Math.random;
+  Math.random = () => value;
+  try {
+    return fn();
+  } finally {
+    Math.random = original;
+  }
 }
 
 /** 驱动全 AI 对局直到结束（或超过步数上限，视为卡死） */
@@ -95,6 +108,14 @@ describe('谁是卧底', () => {
     expect(view.civilianWord).toBeUndefined();
     expect(view.undercoverWord).toBeUndefined();
   });
+
+  it('玩家视角包含座位号，便于后续 3D 座位映射', () => {
+    const game = new UndercoverGame(aiPlayers(5));
+    const state = game.getState() as { players: { playerId: string }[] };
+    const view = game.getView(state.players[0].playerId) as { players: { seatNumber?: number }[] };
+
+    expect(view.players.map((player) => player.seatNumber)).toEqual([1, 2, 3, 4, 5]);
+  });
 });
 
 describe('狼人杀', () => {
@@ -115,6 +136,185 @@ describe('狼人杀', () => {
       (game.getState() as { nightVictim?: string }).nightVictim = 'p2';
       game.handleAction({ type: 'witch_save', playerId: witch.playerId });
     }).toThrow(GameError);
+  });
+
+  it('人类女巫要等狼人行动结束后才进入待行动列表', () => {
+    const base = new WerewolfGame(aiPlayers(9));
+    const baseState = base.getState() as { players: { playerId: string; role: string }[] };
+    const witch = baseState.players.find((p) => p.role === 'witch')!;
+    const players = aiPlayers(9).map((p) => (p.playerId === witch.playerId ? { ...p, isAi: false } : p));
+    const game = new WerewolfGame(players, base.getState());
+    const state = game.getState() as { players: { playerId: string; role: string }[] };
+    const wolves = state.players.filter((p) => p.role === 'werewolf');
+    const target = state.players.find((p) => p.role === 'villager')!;
+
+    expect(game.pendingHumans()).toEqual([]);
+
+    wolves.forEach((wolf) => {
+      game.handleAction({ type: 'werewolf_kill', playerId: wolf.playerId, targetId: target.playerId });
+    });
+
+    expect(game.pendingHumans()).toContain(witch.playerId);
+  });
+
+  it('女巫被刀且解药未用时，不报号但仍可自救', () => {
+    const game = new WerewolfGame(aiPlayers(9));
+    const state = game.getState() as { players: { playerId: string; role: string }[] };
+    const wolves = state.players.filter((p) => p.role === 'werewolf');
+    const witch = state.players.find((p) => p.role === 'witch')!;
+
+    wolves.forEach((wolf) => {
+      game.handleAction({ type: 'werewolf_kill', playerId: wolf.playerId, targetId: witch.playerId });
+    });
+
+    const witchView = game.getView(witch.playerId) as {
+      witchNightStatus?: string;
+      nightVictim?: string | null;
+      witchCanAct?: boolean;
+      witchCanSave?: boolean;
+    };
+    expect(witchView.witchNightStatus).toBe('self_target');
+    expect(witchView.nightVictim).toBeNull();
+    expect(witchView.witchCanAct).toBe(true);
+    expect(witchView.witchCanSave).toBe(true);
+  });
+
+  it('女巫解药用完后，不再知道夜晚刀口', () => {
+    const game = new WerewolfGame(aiPlayers(9));
+    const state = game.getState() as {
+      players: { playerId: string; role: string; isAlive: boolean }[];
+      witchPotions: { save: boolean; poison: boolean };
+      witchTonight?: string;
+      wolfVotes: Record<string, string>;
+      nightVictim?: string;
+    };
+    const wolves = state.players.filter((p) => p.role === 'werewolf');
+    const witch = state.players.find((p) => p.role === 'witch')!;
+    const firstTarget = state.players.find((p) => p.role === 'villager')!;
+
+    wolves.forEach((wolf) => {
+      game.handleAction({ type: 'werewolf_kill', playerId: wolf.playerId, targetId: firstTarget.playerId });
+    });
+    game.handleAction({ type: 'witch_save', playerId: witch.playerId });
+    state.witchTonight = undefined;
+    state.wolfVotes = {};
+    state.nightVictim = undefined;
+    const nextTarget = state.players.find((p) => p.role !== 'werewolf' && p.playerId !== witch.playerId && p.isAlive)!;
+    const nextWolves = state.players.filter((p) => p.role === 'werewolf' && p.isAlive);
+    nextWolves.forEach((wolf) => {
+      game.handleAction({ type: 'werewolf_kill', playerId: wolf.playerId, targetId: nextTarget.playerId });
+    });
+
+    const witchView = game.getView(witch.playerId) as {
+      witchNightStatus?: string;
+      nightVictim?: string | null;
+      witchCanSave?: boolean;
+    };
+    expect(witchView.witchNightStatus).toBe('no_save_potion');
+    expect(witchView.nightVictim).toBeNull();
+    expect(witchView.witchCanSave).toBe(false);
+  });
+
+  it('AI 法官会按夜晚子阶段切换主持词，并使用座位号', () => {
+    const game = new WerewolfGame(aiPlayers(9));
+    const state = game.getState() as {
+      phase: string;
+      players: { playerId: string; role: string }[];
+    };
+    const wolves = state.players.filter((p) => p.role === 'werewolf');
+    const seer = state.players.find((p) => p.role === 'seer')!;
+    const witch = state.players.find((p) => p.role === 'witch')!;
+    const villager = state.players.find((p) => p.role === 'villager')!;
+
+    expect(aiJudgeBroadcast(game.getState() as unknown as GameState)).toContain('狼人请睁眼');
+
+    wolves.forEach((wolf) => {
+      game.handleAction({ type: 'werewolf_kill', playerId: wolf.playerId, targetId: villager.playerId });
+    });
+    expect(aiJudgeBroadcast(game.getState() as unknown as GameState)).toContain('预言家请睁眼');
+
+    game.handleAction({ type: 'seer_check', playerId: seer.playerId, targetId: wolves[0].playerId });
+    const witchBroadcast = aiJudgeBroadcast(game.getState() as unknown as GameState);
+    expect(witchBroadcast).toContain('女巫请睁眼');
+    expect(witchBroadcast).toContain('号');
+
+    const witchView = game.getView(witch.playerId) as {
+      players: { playerId: string; seatNumber?: number }[];
+      nightVictimSeatNumber?: number | null;
+    };
+    const villagerSeatNumber = witchView.players.find((p) => p.playerId === villager.playerId)?.seatNumber;
+    expect(villagerSeatNumber).toBeTypeOf('number');
+    expect(witchView.nightVictimSeatNumber).toBe(villagerSeatNumber);
+  });
+
+  it('狼人 AI 会优先刀公开跳预言家的玩家', () => {
+    const game = new WerewolfGame(aiPlayers(9));
+    const state = game.getState() as unknown as GameState;
+    const wolf = state.players.find((player) => player.role === 'werewolf')!;
+    const fakeSeer = state.players.find((player) => player.role === 'villager')!;
+    state.dayMessages.push({
+      playerId: fakeSeer.playerId,
+      nickname: fakeSeer.nickname,
+      content: '我是预言家，今天大家先听我归票。',
+      timestamp: Date.now(),
+    });
+
+    const targetId = withMockedRandom(0.1, () => decideWolfKill({ state, aiPlayer: wolf }));
+    expect(targetId).toBe(fakeSeer.playerId);
+  });
+
+  it('预言家 AI 会优先查验跳预言家的对跳玩家', () => {
+    const game = new WerewolfGame(aiPlayers(9));
+    const state = game.getState() as unknown as GameState;
+    const seer = state.players.find((player) => player.role === 'seer')!;
+    const fakeSeer = state.players.find((player) => player.role === 'villager')!;
+    state.dayMessages.push({
+      playerId: fakeSeer.playerId,
+      nickname: fakeSeer.nickname,
+      content: '我是预言家，我昨晚已经验过人了。',
+      timestamp: Date.now(),
+    });
+
+    const targetId = decideSeerCheck({ state, aiPlayer: seer });
+    expect(targetId).toBe(fakeSeer.playerId);
+  });
+
+  it('女巫 AI 被刀时会优先选择自救', () => {
+    const game = new WerewolfGame(aiPlayers(9));
+    const state = game.getState() as unknown as GameState;
+    const witch = state.players.find((player) => player.role === 'witch')!;
+    state.nightVictim = witch.playerId;
+
+    expect(decideWitchAction({ state, aiPlayer: witch })).toBe('save');
+  });
+
+  it('平民 AI 遇到预言家对跳时会优先在对跳位中投票', () => {
+    const game = new WerewolfGame(aiPlayers(9));
+    const state = game.getState() as unknown as GameState;
+    const villager = state.players.find((player) => player.role === 'villager')!;
+    const otherVillager = state.players.find((player) => player.role === 'villager' && player.playerId !== villager.playerId)!;
+    const hunter = state.players.find((player) => player.role === 'hunter')!;
+    hunter.suspicion = 1;
+    otherVillager.suspicion = 2;
+    state.dayMessages.push(
+      {
+        playerId: villager.playerId,
+        nickname: villager.nickname,
+        content: '我是预言家，昨晚查到信息了。',
+        timestamp: Date.now(),
+      },
+      {
+        playerId: otherVillager.playerId,
+        nickname: otherVillager.nickname,
+        content: '我才是真预言家，前面那个在悍跳。',
+        timestamp: Date.now() + 1,
+      },
+    );
+
+    const voter = state.players.find((player) => player.role === 'hunter')!;
+    const vote = decideVote({ state, aiPlayer: voter });
+    expect([villager.playerId, otherVillager.playerId]).toContain(vote.targetId);
+    expect(vote.targetId).toBe(otherVillager.playerId);
   });
 
   it('非狼人不能发动狼人击杀', () => {
@@ -251,7 +451,7 @@ describe('狼人杀', () => {
   });
 });
 
-describe('谁是凶手', () => {
+describe('谁是小偷', () => {
   it('侦探调查结果只写入私密笔记', () => {
     const game = new ThiefGame(aiPlayers(5));
     const state = game.getState() as { players: { playerId: string; role: string }[] };
@@ -284,6 +484,14 @@ describe('谁是凶手', () => {
       const state = game.getState() as { winner: string };
       expect(['thief', 'citizen']).toContain(state.winner);
     }
+  });
+
+  it('玩家视角包含座位号，便于轻推理局 3D 化', () => {
+    const game = new ThiefGame(aiPlayers(5));
+    const state = game.getState() as { players: { playerId: string }[] };
+    const view = game.getView(state.players[0].playerId) as { players: { seatNumber?: number }[] };
+
+    expect(view.players.map((player) => player.seatNumber)).toEqual([1, 2, 3, 4, 5]);
   });
 });
 
@@ -325,6 +533,19 @@ describe('剧本杀', () => {
 
     const innocentView = game.getView(innocent.playerId) as { murderWeapon: string };
     expect(innocentView.murderWeapon).toBe('???');
+  });
+
+  it('玩家视角包含案名、座位号和嫌疑值，便于沉浸式案件展示', () => {
+    const game = new MysteryGame(aiPlayers(5));
+    const state = game.getState() as { scenarioTitle?: string; players: { playerId: string }[] };
+    const view = game.getView(state.players[0].playerId) as {
+      scenarioTitle?: string;
+      players: { seatNumber?: number; suspicionLevel?: number }[];
+    };
+
+    expect(view.scenarioTitle).toBe(state.scenarioTitle);
+    expect(view.players.map((player) => player.seatNumber)).toEqual([1, 2, 3, 4, 5]);
+    expect(view.players.every((player) => typeof player.suspicionLevel === 'number')).toBe(true);
   });
 });
 

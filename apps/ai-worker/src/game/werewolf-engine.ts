@@ -85,6 +85,48 @@ export function getAliveVillagers(state: GameState): PlayerState[] {
   return state.players.filter((p) => p.isAlive && p.role !== 'werewolf');
 }
 
+function haveAllAliveWerewolvesActed(state: GameState): boolean {
+  const wolves = getAliveWerewolves(state);
+  return wolves.length === 0 || wolves.every((wolf) => Boolean(state.wolfVotes[wolf.playerId]));
+}
+
+function getSeatNumber(state: GameState, playerId: string): number | null {
+  const index = state.players.findIndex((player) => player.playerId === playerId);
+  return index >= 0 ? index + 1 : null;
+}
+
+function getSeatLabel(state: GameState, playerId: string): string {
+  const seatNumber = getSeatNumber(state, playerId);
+  return seatNumber ? `${seatNumber} 号` : '未知号码';
+}
+
+function getWitchNightInfo(
+  state: GameState,
+  witchId: string,
+): {
+  status: 'waiting_wolves' | 'known_victim' | 'self_target' | 'no_save_potion' | 'no_victim';
+  victimName: string | null;
+  canSave: boolean;
+} {
+  if (!haveAllAliveWerewolvesActed(state)) {
+    return { status: 'waiting_wolves', victimName: null, canSave: false };
+  }
+  if (!state.witchPotions.save) {
+    return { status: 'no_save_potion', victimName: null, canSave: false };
+  }
+  if (!state.nightVictim) {
+    return { status: 'no_victim', victimName: null, canSave: false };
+  }
+  if (state.nightVictim === witchId) {
+    return { status: 'self_target', victimName: null, canSave: true };
+  }
+  return {
+    status: 'known_victim',
+    victimName: state.players.find((p) => p.playerId === state.nightVictim)?.nickname ?? null,
+    canSave: true,
+  };
+}
+
 /** 检查胜利条件 */
 export function checkVictory(state: GameState): 'werewolf' | 'villager' | null {
   const wolves = getAliveWerewolves(state).length;
@@ -501,8 +543,31 @@ export function applyJudgeSpeak(state: GameState, judgeId: string, content: stri
 /** AI 法官发号施令：根据当前阶段生成广播词（天黑请闭眼、天亮请睁眼等） */
 export function aiJudgeBroadcast(state: GameState): string | null {
   switch (state.phase) {
-    case 'night':
-      return state.round === 1 ? '天黑请闭眼。狼人请睁眼并选择击杀目标。' : `第 ${state.round} 夜，天黑请闭眼。狼人请选择击杀目标。`;
+    case 'night': {
+      const alive = getAlivePlayers(state);
+      const aliveSeer = alive.find((player) => player.role === 'seer');
+      const aliveWitch = alive.find((player) => player.role === 'witch');
+
+      if (!haveAllAliveWerewolvesActed(state)) {
+        return state.round === 1 ? '天黑请闭眼。狼人请睁眼并选择今晚的击杀目标。' : `第 ${state.round} 夜，天黑请闭眼。狼人请选择今晚的击杀目标。`;
+      }
+      if (aliveSeer && state.seerCheckedTonight.length === 0) {
+        return '狼人请闭眼。预言家请睁眼，选择一名玩家进行查验。';
+      }
+      if (aliveWitch && state.witchTonight === undefined) {
+        if (!state.witchPotions.save) {
+          return '预言家请闭眼。女巫请睁眼。你的解药已经用完，本夜不会获知刀口，请决定是否使用毒药。';
+        }
+        if (!state.nightVictim) {
+          return '预言家请闭眼。女巫请睁眼。今夜无人被报号，请决定是否使用毒药。';
+        }
+        if (state.nightVictim === aliveWitch.playerId) {
+          return '预言家请闭眼。女巫请睁眼。今夜无人被报号，请判断是否使用解药自救，或是否使用毒药。';
+        }
+        return `预言家请闭眼。女巫请睁眼。今晚被杀的是 ${getSeatLabel(state, state.nightVictim)}，你是否要使用解药或毒药？`;
+      }
+      return '夜晚行动即将结束，请等待法官宣布天亮。';
+    }
     case 'final_speech':
       return '天亮了。请出局的玩家发表临终遗言。';
     case 'day': {
@@ -531,6 +596,7 @@ export function getJudgeView(state: GameState): Record<string, unknown> {
     players: state.players.map((p) => ({
       playerId: p.playerId,
       nickname: p.nickname,
+      seatNumber: getSeatNumber(state, p.playerId),
       isAlive: p.isAlive,
       role: p.role,
       isMe: false,
@@ -552,6 +618,7 @@ export function getJudgeView(state: GameState): Record<string, unknown> {
     witchTonight: state.witchTonight,
     witchPoisonTarget: state.witchPoisonTarget,
     nightVictim: state.nightVictim,
+    nightVictimSeatNumber: state.nightVictim ? getSeatNumber(state, state.nightVictim) : null,
     events: state.events,
   };
 }
@@ -570,6 +637,7 @@ export function getPlayerView(state: GameState, playerId: string | null, isJudge
     players: state.players.map((p) => ({
       playerId: p.playerId,
       nickname: p.nickname,
+      seatNumber: getSeatNumber(state, p.playerId),
       isAlive: p.isAlive,
       role: finished ? p.role : p.playerId === playerId ? p.role : undefined,
       isMe: p.playerId === playerId,
@@ -601,10 +669,13 @@ export function getPlayerView(state: GameState, playerId: string | null, isJudge
   if (me?.role === 'witch') {
     view.witchPotions = state.witchPotions;
     view.witchActed = Boolean(state.witchTonight);
-    if (state.phase === 'night' && !state.witchTonight) {
-      view.nightVictim = state.nightVictim
-        ? state.players.find((p) => p.playerId === state.nightVictim)?.nickname
-        : null;
+    if (state.phase === 'night') {
+      const witchInfo = getWitchNightInfo(state, playerId ?? '');
+      view.witchCanAct = haveAllAliveWerewolvesActed(state);
+      view.witchCanSave = witchInfo.canSave && !state.witchTonight;
+      view.witchNightStatus = witchInfo.status;
+      view.nightVictim = witchInfo.victimName;
+      view.nightVictimSeatNumber = state.nightVictim ? getSeatNumber(state, state.nightVictim) : null;
     }
   }
   if (me?.role === 'hunter' && !finished) {

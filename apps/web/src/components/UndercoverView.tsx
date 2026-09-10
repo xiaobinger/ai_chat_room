@@ -90,7 +90,12 @@ export function UndercoverView({
           {view.currentSpeakerId && (
             <p className="turn-hint">
               当前发言：
-              <b>{view.players.find((p) => p.playerId === view.currentSpeakerId)?.nickname}</b>
+              <b>
+                {(() => {
+                  const current = view.players.find((p) => p.playerId === view.currentSpeakerId);
+                  return `${current?.seatNumber ? `${current.seatNumber}号 ` : ''}${current?.nickname ?? ''}`;
+                })()}
+              </b>
               {isMyTurn && <span className="chip-tag active">轮到你了！</span>}
             </p>
           )}

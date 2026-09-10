@@ -129,6 +129,7 @@ export function ThiefGameView({
                   .map((p) => (
                     <button key={p.playerId} className="vote-btn" onClick={() => void act('investigate', { targetId: p.playerId })}>
                       <span className="player-avatar small">{p.nickname.slice(0, 1)}</span>
+                      {p.seatNumber ? `${p.seatNumber}号 ` : ''}
                       {p.nickname}
                     </button>
                   ))}
@@ -145,6 +146,7 @@ export function ThiefGameView({
                   .map((p) => (
                     <button key={p.playerId} className="vote-btn danger" onClick={() => void act('frame', { targetId: p.playerId })}>
                       <span className="player-avatar small">{p.nickname.slice(0, 1)}</span>
+                      {p.seatNumber ? `${p.seatNumber}号 ` : ''}
                       {p.nickname}
                     </button>
                   ))}

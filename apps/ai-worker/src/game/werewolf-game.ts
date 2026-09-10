@@ -61,6 +61,11 @@ const FINAL_SPEECH_DEADLINE_MS = 30_000;
 const pick = <T>(list: T[]): T | undefined =>
   list.length > 0 ? list[Math.floor(Math.random() * list.length)] : undefined;
 
+function haveAllAliveWerewolvesActed(state: GameState): boolean {
+  const wolves = state.players.filter((p) => p.isAlive && p.role === 'werewolf');
+  return wolves.length === 0 || wolves.every((wolf) => Boolean(state.wolfVotes[wolf.playerId]));
+}
+
 /** AI 法官临终遗言模板 */
 function generateAiFinalSpeech(role: string, _nickname: string): string {
   const templates: Record<string, string[]> = {
@@ -189,6 +194,7 @@ export class WerewolfGame extends BaseGameEngine {
         if (this.isAi(p.playerId)) continue;
         // 村民/猎人夜晚没有行动，不进入待行动列表（否则夜晚永远无法结算）
         if (p.role !== 'werewolf' && p.role !== 'seer' && p.role !== 'witch') continue;
+        if (p.role === 'witch' && !haveAllAliveWerewolvesActed(state)) continue;
         const acted =
           (p.role === 'werewolf' && state.wolfVotes[p.playerId]) ||
           (p.role === 'seer' && state.seerCheckedTonight.length > 0) ||
@@ -297,7 +303,7 @@ export class WerewolfGame extends BaseGameEngine {
         } else {
           state.seerCheckedTonight.push(playerId);
         }
-      } else if (me.role === 'witch' && state.witchTonight === undefined) {
+      } else if (me.role === 'witch' && state.witchTonight === undefined && haveAllAliveWerewolvesActed(state)) {
         applyWitchAction(state, playerId, 'pass');
       }
       return;
