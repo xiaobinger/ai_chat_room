@@ -314,7 +314,7 @@ export class WerewolfGame extends BaseGameEngine {
   }
 
   /** 推进一原子步：AI 行动或阶段结算。返回 false 表示等待人类或已结束。 */
-  step(): boolean {
+  async step(): Promise<boolean> {
     const state = this.state;
     if (state.phase === 'finished') return false;
 
@@ -351,7 +351,7 @@ export class WerewolfGame extends BaseGameEngine {
       case 'night':
         return this.stepNight();
       case 'day':
-        return this.stepDay();
+        return this.stepDayAsync();
       case 'vote':
         return this.stepVote();
       case 'final_speech':
@@ -456,25 +456,6 @@ export class WerewolfGame extends BaseGameEngine {
           }
         }
 
-        applyDaySpeak(state, p.playerId, speech);
-        return true;
-      }
-    }
-
-    if (alive.some((p) => !state.speechStatus[p.playerId])) return false;
-
-    this.lastBroadcast = null;
-    startVotePhase(state);
-    return true;
-  }
-
-  private stepDay(): boolean {
-    const state = this.state;
-    const alive = getAlivePlayers(state);
-
-    for (const p of alive) {
-      if (this.isAi(p.playerId) && !state.speechStatus[p.playerId]) {
-        const speech = generateDaySpeech({ state, aiPlayer: p });
         applyDaySpeak(state, p.playerId, speech);
         return true;
       }

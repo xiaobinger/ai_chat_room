@@ -15,10 +15,10 @@ function aiPlayers(count: number): GamePlayerInfo[] {
 }
 
 /** 驱动全 AI 对局直到结束（或超过步数上限，视为卡死） */
-function runToEnd(game: UndercoverGame | WerewolfGame | ThiefGame | MysteryGame, maxSteps = 500): number {
+async function runToEnd(game: UndercoverGame | WerewolfGame | ThiefGame | MysteryGame, maxSteps = 500): Promise<number> {
   let steps = 0;
   while (!game.isFinished() && steps < maxSteps) {
-    const moved = game.step();
+    const moved = await game.step();
     if (!moved) throw new Error(`游戏在第 ${steps} 步卡住（无待行动人类却无法推进）`);
     steps += 1;
   }
@@ -68,10 +68,10 @@ describe('谁是卧底', () => {
     expect((game.getState() as { phase: string }).phase).toBe('voting');
   });
 
-  it('全 AI 对局能完整跑完并给出胜负', () => {
+  it('全 AI 对局能完整跑完并给出胜负', async () => {
     for (let run = 0; run < 5; run++) {
       const game = new UndercoverGame(aiPlayers(4 + (run % 5)));
-      runToEnd(game);
+      await runToEnd(game);
       const results = game.getResults();
       expect(results).not.toBeNull();
       const entries = Object.values(results!);
@@ -155,20 +155,20 @@ describe('狼人杀', () => {
     expect(spectator.players.every((p) => p.role === undefined)).toBe(true);
   });
 
-  it('全 AI 对局能完整跑完（多狼投票/女巫/猎人开枪）', () => {
+  it('全 AI 对局能完整跑完（多狼投票/女巫/猎人开枪）', async () => {
     for (let run = 0; run < 3; run++) {
       const game = new WerewolfGame(aiPlayers(9));
-      runToEnd(game);
+      await runToEnd(game);
       const state = game.getState() as { winner: string };
       expect(['werewolf', 'villager']).toContain(state.winner);
     }
   });
 
-  it('AI 法官模式：全 AI 对局完整跑完，法官有广播且不参与角色分配', () => {
+  it('AI 法官模式：全 AI 对局完整跑完，法官有广播且不参与角色分配', async () => {
     for (let run = 0; run < 3; run++) {
       const players = [...aiPlayers(8), { playerId: 'judge', nickname: 'AI 法官', isAi: true }];
       const game = new WerewolfGame(players, undefined, { judgeMode: 'ai', judgePlayerId: 'judge' });
-      runToEnd(game);
+      await runToEnd(game);
       const state = game.getState() as {
         winner: string;
         players: { playerId: string }[];
@@ -183,7 +183,7 @@ describe('狼人杀', () => {
     }
   });
 
-  it('村民/猎人夜晚无行动，不阻塞夜晚结算（人类村民在场也能推进）', () => {
+  it('村民/猎人夜晚无行动，不阻塞夜晚结算（人类村民在场也能推进）', async () => {
     const base = new WerewolfGame(aiPlayers(9));
     const baseState = base.getState() as { players: { playerId: string; role: string }[] };
     const villager = baseState.players.find((p) => p.role === 'villager')!;
@@ -197,7 +197,7 @@ describe('狼人杀', () => {
     // 夜晚应能由 AI 行动直接结算完毕
     let guard = 0;
     while ((game.getState() as { phase: string }).phase === 'night' && guard++ < 50) {
-      expect(game.step()).toBe(true);
+      expect(await game.step()).toBe(true);
     }
     expect((game.getState() as { phase: string }).phase).not.toBe('night');
   });
@@ -277,10 +277,10 @@ describe('谁是凶手', () => {
     expect(view.thiefTeamIds).toBeUndefined();
   });
 
-  it('全 AI 对局能完整跑完', () => {
+  it('全 AI 对局能完整跑完', async () => {
     for (let run = 0; run < 3; run++) {
       const game = new ThiefGame(aiPlayers(6));
-      runToEnd(game);
+      await runToEnd(game);
       const state = game.getState() as { winner: string };
       expect(['thief', 'citizen']).toContain(state.winner);
     }
@@ -329,7 +329,7 @@ describe('剧本杀', () => {
 });
 
 describe('引擎重启恢复', () => {
-  it('从持久化状态恢复后能继续推进', () => {
+  it('从持久化状态恢复后能继续推进', async () => {
     const game = new UndercoverGame(aiPlayers(5));
     // 推进几步
     game.step();
@@ -338,7 +338,7 @@ describe('引擎重启恢复', () => {
 
     const restored = new UndercoverGame(aiPlayers(5), saved);
     expect(restored.getState()).toEqual(saved);
-    runToEnd(restored);
+    await runToEnd(restored);
   });
 
   it('旧格式状态（无 format 字段）拒绝恢复', () => {

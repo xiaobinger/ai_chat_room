@@ -15,7 +15,7 @@ import type { EngineAction, GamePlayerInfo } from './errors';
 export abstract class BaseGameEngine {
   constructor(protected readonly players: GamePlayerInfo[]) {}
 
-  abstract step(): boolean;
+  abstract step(): boolean | Promise<boolean>;
   abstract pendingHumans(): string[];
   abstract phaseDeadlineMs(): number;
   abstract handleAction(action: EngineAction): void;
