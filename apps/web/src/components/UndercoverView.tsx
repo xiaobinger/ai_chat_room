@@ -1,10 +1,15 @@
 import { Sparkles } from 'lucide-react';
 import {
   Countdown,
+  HostSummaryCard,
+  InfoBlock,
   PhaseBadge,
+  PhaseSpotlight,
   PlayerChips,
   PlayerCount,
+  ResultRevealCard,
   SpeechInput,
+  StageVeil,
   Timeline,
   VoteGrid,
   WinnerBanner,
@@ -14,8 +19,10 @@ import {
 
 interface UndercoverViewState extends GameViewState {
   myWord?: string;
+  myPersona?: string;
   descriptions?: { playerId: string; nickname: string; round: number; content: string }[];
   currentSpeakerId?: string | null;
+  publicNotes?: { round: number; content: string }[];
   voteStatus?: Record<string, 'voted' | 'abstained'>;
   civilianWord?: string;
   undercoverWord?: string;
@@ -24,6 +31,19 @@ interface UndercoverViewState extends GameViewState {
 const ROLE_DESCRIPTIONS: Record<string, string> = {
   civilian: '你和大多数人拿到同一个词。描述要让人懂但别直接说出词。',
   undercover: '你的词和其他人不同。描述得模糊一点，别露馅！',
+};
+
+const PERSONA_DESCRIPTIONS: Record<string, string> = {
+  谨慎试探型: '先给模糊线索，边听边修正，不轻易把话说满。',
+  联想发散型: '更喜欢从画面、情绪和场景切入，描述更有氛围感。',
+  稳健跟随型: '会顺着多数人的方向补充，尽量避免第一个暴露自己。',
+  大胆误导型: '敢主动换角度带节奏，试着把大家往错误方向引。',
+};
+
+const UNDERCOVER_PHASE_COPY: Record<string, { title: string; subtitle: string; tone: 'neutral' | 'warn' | 'danger' }> = {
+  describing: { title: '轮流试探', subtitle: '描述越自然越安全，越刻意越容易露出破绽。', tone: 'neutral' },
+  voting: { title: '票型收口', subtitle: '现在要找的是最不合群、最像没跟上多数节奏的人。', tone: 'warn' },
+  result: { title: '词底翻开', subtitle: '真正的词和身份即将揭晓，胜负只在这一刻。', tone: 'danger' },
 };
 
 export function UndercoverView({
@@ -46,14 +66,34 @@ export function UndercoverView({
   const isMyTurn = view.currentSpeakerId === myPlayerId && view.phase === 'describing';
   const canAct = alive && !finished;
   const me = view.players.find((p) => p.playerId === myPlayerId);
+  const recentPublicNotes = (view.publicNotes ?? []).slice(-3).reverse();
+  const hostSummary = recentPublicNotes[0];
+  const focusPlayers = view.players
+    .filter((player) => recentPublicNotes.some((note) => note.content.includes(player.nickname)))
+    .slice(0, 3);
+  const highlightedNames = focusPlayers.map((player) => `${player.seatNumber ? `${player.seatNumber}号` : ''}${player.nickname}`);
+  const focusTerms = focusPlayers.map((player) => player.nickname);
 
   return (
     <div className="game-view undercover">
+      <StageVeil
+        stageKey={`${view.round}-${view.phase}`}
+        title={UNDERCOVER_PHASE_COPY[view.phase]?.title ?? '局势推进'}
+        subtitle={UNDERCOVER_PHASE_COPY[view.phase]?.subtitle}
+        tone={UNDERCOVER_PHASE_COPY[view.phase]?.tone ?? 'neutral'}
+      />
       <div className="game-toolbar">
         <PhaseBadge phase={view.phase} round={view.round} />
         <PlayerCount players={view.players} />
         <Countdown deadline={finished ? null : deadline} onExpire={refresh} />
       </div>
+
+      <PhaseSpotlight
+        phaseKey={`${view.round}-${view.phase}`}
+        title={UNDERCOVER_PHASE_COPY[view.phase]?.title ?? '局势推进'}
+        subtitle={UNDERCOVER_PHASE_COPY[view.phase]?.subtitle ?? '越接近真相，描述和票型的微妙差别越重要。'}
+        tone={UNDERCOVER_PHASE_COPY[view.phase]?.tone ?? 'neutral'}
+      />
 
       {finished && view.winner && (
         <WinnerBanner
@@ -64,14 +104,8 @@ export function UndercoverView({
 
       {finished && view.civilianWord && (
         <div className="word-reveal">
-          <div className="word-card civilian">
-            <small>平民词</small>
-            <b>{view.civilianWord}</b>
-          </div>
-          <div className="word-card undercover">
-            <small>卧底词</small>
-            <b>{view.undercoverWord}</b>
-          </div>
+          <ResultRevealCard eyebrow="平民词" title={view.civilianWord} tone="good" />
+          <ResultRevealCard eyebrow="卧底词" title={view.undercoverWord ?? '未知'} tone="bad" delayMs={220} />
         </div>
       )}
 
@@ -83,10 +117,45 @@ export function UndercoverView({
         </div>
       )}
 
+      {view.myPersona && !finished && (
+        <InfoBlock>
+          <Sparkles size={14} />
+          <div>
+            <b>我的描述风格：{view.myPersona}</b>
+            <p>{PERSONA_DESCRIPTIONS[view.myPersona] ?? '这会影响你的描述节奏和带偏方式。'}</p>
+          </div>
+        </InfoBlock>
+      )}
+
+      {hostSummary && (
+        <HostSummaryCard
+          title="本轮主持观察"
+          label={`第 ${hostSummary.round} 轮`}
+          summary={hostSummary.content}
+          highlights={highlightedNames}
+          tone={view.phase === 'voting' ? 'warn' : 'neutral'}
+        />
+      )}
+
+      {(view.publicNotes ?? []).length > 0 && (
+        <div className="game-section">
+          <h4>场上观察</h4>
+          <div className="day-messages">
+            {recentPublicNotes.map((note, index) => (
+              <div key={`${note.round}-${index}`} className={`day-message ${index === 0 ? 'focus' : ''}`}>
+                <b>第 {note.round} 轮：</b>
+                <span>{note.content}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 描述阶段 */}
       {view.phase === 'describing' && !finished && (
         <div className="action-panel">
           <h4>轮流描述你的词</h4>
+          <p className="hint">每轮尽量换个角度描述，比如场景、感觉、用途、外观，别一直重复上一轮的话。</p>
           {view.currentSpeakerId && (
             <p className="turn-hint">
               当前发言：
@@ -117,6 +186,7 @@ export function UndercoverView({
       {/* 投票 */}
       {view.phase === 'voting' && !finished && (
         <div className="action-panel vote">
+          <p className="hint">优先找描述最别扭、最难和大多数人对上的那个人，不要只凭直觉乱投。</p>
           {canAct && !view.voteStatus?.[myPlayerId ?? ''] ? (
             <VoteGrid
               players={view.players}
@@ -154,11 +224,12 @@ export function UndercoverView({
           players={view.players}
           currentSpeakerId={view.phase === 'describing' ? view.currentSpeakerId : undefined}
           voteStatus={view.phase === 'voting' ? view.voteStatus : undefined}
+          focusedPlayerIds={focusPlayers.map((player) => player.playerId)}
           showRoles={finished}
         />
       </div>
 
-      <Timeline events={view.events ?? []} />
+      <Timeline events={view.events ?? []} focusTerms={focusTerms} />
     </div>
   );
 }

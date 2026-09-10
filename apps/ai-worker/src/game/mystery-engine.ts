@@ -16,6 +16,127 @@ function getSeatNumber(state: MysteryGameState, playerId: string): number | null
   return index >= 0 ? index + 1 : null;
 }
 
+function clueImplicationScore(clue: ClueCard, player: MysteryPlayerState): number {
+  const haystack = `${clue.name} ${clue.description} ${clue.revealsInfo} ${clue.location}`;
+  let score = 0;
+  if (haystack.includes(player.character.name)) score += 3;
+  if (haystack.includes(player.character.relationshipToVictim)) score += 2;
+  const alibiKeywords = player.character.alibi
+    .split(/[，。；、,\s]/)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 2);
+  if (alibiKeywords.some((keyword) => haystack.includes(keyword))) score += 1;
+  return score;
+}
+
+function discussionPressureScore(state: MysteryGameState, player: MysteryPlayerState): number {
+  return state.discussionLog.reduce((score, entry) => {
+    if (entry.playerId === player.playerId) return score;
+    if (entry.content.includes(player.character.name) || entry.content.includes(player.nickname)) {
+      return score + (entry.type === 'accusation' ? 2 : 1);
+    }
+    return score;
+  }, 0);
+}
+
+function observationPressureScore(state: MysteryGameState, player: MysteryPlayerState): number {
+  return state.observations
+    .filter((observation) => observation.targetId === player.playerId)
+    .reduce((score, observation) => score + Math.max(0, observation.suspicionDelta), 0);
+}
+
+function mysteryPublicScore(state: MysteryGameState, player: MysteryPlayerState): number {
+  const discoveredClues = state.clues.filter((clue) => state.discoveredClues.includes(clue.id));
+  const clueScore = discoveredClues.reduce((score, clue) => score + clueImplicationScore(clue, player), 0);
+  return player.suspicionLevel * 2 + discussionPressureScore(state, player) + observationPressureScore(state, player) + clueScore;
+}
+
+function rankMysterySuspects(state: MysteryGameState, excludePlayerId?: string): MysteryPlayerState[] {
+  return getAlivePlayers(state)
+    .filter((player) => player.playerId !== excludePlayerId)
+    .sort((a, b) => mysteryPublicScore(state, b) - mysteryPublicScore(state, a));
+}
+
+function mentionedInPublicNotes(state: MysteryGameState, player: MysteryPlayerState): number {
+  return state.publicNotes.reduce((score, note) => (note.content.includes(player.character.name) ? score + 1 : score), 0);
+}
+
+function interpersonalPressureScore(
+  state: MysteryGameState,
+  observer: MysteryPlayerState,
+  target: MysteryPlayerState,
+): number {
+  return state.discussionLog.reduce((score, entry) => {
+    if (entry.playerId !== target.playerId) return score;
+    if (entry.content.includes(observer.character.name) || entry.content.includes(observer.nickname)) return score + 1;
+    return score;
+  }, 0);
+}
+
+function mysteryPersonalityBias(
+  state: MysteryGameState,
+  observer: MysteryPlayerState,
+  target: MysteryPlayerState,
+): number {
+  const personality = observer.character.personality;
+  const discoveredClues = state.clues.filter((clue) => state.discoveredClues.includes(clue.id));
+  const clueScore = discoveredClues.reduce((score, clue) => score + clueImplicationScore(clue, target), 0);
+  let score = 0;
+
+  if (/谨慎|冷静|细心|敏锐|理性|观察|精明|专业|沉稳|博学/.test(personality)) {
+    score += clueScore + observationPressureScore(state, target);
+  }
+  if (/豪爽|直率|暴躁|果断|威严|强势|阴郁/.test(personality)) {
+    score += discussionPressureScore(state, target) + interpersonalPressureScore(state, observer, target) * 2;
+  }
+  if (/敏感|温柔|胆小|内向|善良|忧郁/.test(personality)) {
+    score += target.suspicionLevel + mentionedInPublicNotes(state, target);
+  }
+  return score;
+}
+
+function rankMysterySuspectsForPlayer(state: MysteryGameState, observer: MysteryPlayerState): MysteryPlayerState[] {
+  return getAlivePlayers(state)
+    .filter((player) => player.playerId !== observer.playerId)
+    .sort((a, b) => {
+      const scoreB = mysteryPublicScore(state, b) + mysteryPersonalityBias(state, observer, b);
+      const scoreA = mysteryPublicScore(state, a) + mysteryPersonalityBias(state, observer, a);
+      return scoreB - scoreA;
+    });
+}
+
+function mysterySpeechLead(character: CharacterCard): string {
+  const personality = character.personality;
+  if (/豪爽|直率|暴躁|果断|威严|强势/.test(personality)) return '我先把结论说在前面，';
+  if (/谨慎|冷静|细心|敏锐|理性|观察|沉稳|专业/.test(personality)) return '我先按线索慢慢说，';
+  if (/敏感|温柔|胆小|内向|善良|忧郁/.test(personality)) return '我想先把我看到的细节说明白，';
+  return '';
+}
+
+function rememberPublicNote(state: MysteryGameState, content: string): void {
+  const trimmed = content.trim();
+  if (!trimmed) return;
+  const last = state.publicNotes[state.publicNotes.length - 1];
+  if (last?.content === trimmed && last.round === state.round) return;
+  state.publicNotes.push({ round: state.round, content: trimmed });
+}
+
+export function summarizeMysteryPublicNote(state: MysteryGameState): string | undefined {
+  const suspects = rankMysterySuspects(state);
+  const top = suspects[0];
+  const keyClues = state.clues.filter((clue) => clue.isKey && state.discoveredClues.includes(clue.id));
+  if (top && keyClues.length > 0) {
+    return `当前最受怀疑的是 ${top.character.name}，关键线索与TA的说法已经开始出现冲突。`;
+  }
+  if (top) {
+    return `当前嫌疑最集中的人物是 ${top.character.name}，接下来要重点核对TA的动机与不在场证明。`;
+  }
+  if (keyClues.length > 0) {
+    return '关键线索已经出现，但场上还没有形成统一怀疑对象。';
+  }
+  return undefined;
+}
+
 /** 分配角色（使用指定剧本的专属角色池，绝不重复） */
 export function assignMysteryRoles(
   playerIds: string[],
@@ -130,6 +251,7 @@ export function initMysteryState(
     scenarioTitle: scenario.title,
     observations: [],
     secretChats: [],
+    publicNotes: [{ round: 1, content: `案件开始：围绕 ${scenario.victim} 遇害一案，先确认关系网、动机和不在场证明。` }],
     events: [
       {
         id: crypto.randomUUID(),
@@ -322,6 +444,7 @@ export function resolveMysteryVote(state: MysteryGameState): MysteryGameState {
 
   // 平票或无人投票 → 本轮无人出局，直接进入下一轮
   if (tie || !accused || maxVotes === 0) {
+    rememberPublicNote(next, tie ? '本轮出现平票，说明大家对凶手判断仍未统一。' : '本轮无人投票，场上仍缺一个足够让大家信服的怀疑对象。');
     next.events.push({
       id: crypto.randomUUID(),
       round: next.round,
@@ -339,6 +462,7 @@ export function resolveMysteryVote(state: MysteryGameState): MysteryGameState {
   const isCorrect = accused === next.murdererId;
 
   if (isCorrect) {
+    rememberPublicNote(next, `${accusedPlayer?.character.name ?? accusedPlayer?.nickname ?? '目标'} 被成功指认为凶手，案件真相即将揭晓。`);
     // 投出真凶 → 好人胜利
     next.events.push({
       id: crypto.randomUUID(),
@@ -359,6 +483,7 @@ export function resolveMysteryVote(state: MysteryGameState): MysteryGameState {
   if (accusedPlayer) {
     accusedPlayer.isAlive = false;
     accusedPlayer.suspicionLevel += 3;
+    rememberPublicNote(next, `${accusedPlayer.character.name} 被投出但并非凶手，场上判断方向需要彻底重估。`);
   }
   next.events.push({
     id: crypto.randomUUID(),
@@ -402,13 +527,20 @@ export function generateMysterySpeech(
   const aliveOthers = getAlivePlayers(state).filter((p) => p.playerId !== player.playerId);
   const victim = state.victim;
   const weapon = state.murderWeapon;
+  const say = (line: string): string => `${mysterySpeechLead(character)}${line}`;
 
   // ---- 公共辅助：构建上下文 ----
   const discoveredClueObjs = state.clues.filter((c) => state.discoveredClues.includes(c.id));
   const keyClues = discoveredClueObjs.filter((c) => c.isKey);
   const recentDiscussions = state.discussionLog.filter((d) => d.playerId !== player.playerId).slice(-4);
-  const highSuspicion = aliveOthers.filter((p) => p.suspicionLevel > 0).sort((a, b) => b.suspicionLevel - a.suspicionLevel);
-  const topSuspect = highSuspicion[0];
+  const rankedSuspects = rankMysterySuspectsForPlayer(state, player);
+  const topSuspect = rankedSuspects[0];
+  const cluePointingTopSuspect = topSuspect
+    ? keyClues.find((clue) => clueImplicationScore(clue, topSuspect) > 0) ?? discoveredClueObjs.find((clue) => clueImplicationScore(clue, topSuspect) > 0)
+    : undefined;
+  const recentMentionsMe = recentDiscussions.filter(
+    (entry) => entry.content.includes(character.name) || entry.content.includes(player.nickname),
+  );
 
   // ---- 自我介绍阶段 ----
   if (type === 'introduction') {
@@ -418,19 +550,26 @@ export function generateMysterySpeech(
         `诸位好，我是${character.name}。${character.backstory.slice(0, 30)}……愿${victim}的在天之灵能早日安息。`,
         `我是${character.name}，${character.role}。${character.backstory.slice(0, 30)}……我也想知道，到底是谁对${victim}下了毒手。`,
       ];
-      return pick(openerTemplates)!;
+      return say(pick(openerTemplates)!);
     }
     const openerTemplates = [
       `我是${character.name}，${character.role}。${character.backstory.slice(0, 35)}……我会尽力协助查明${victim}被害的真相。`,
       `各位好，我是${character.name}，${character.relationshipToVictim}对于${victim}的离世，我非常悲痛。`,
       `我是${character.name}，${character.role}。${character.backstory.slice(0, 30)}……我一定要找出杀害${victim}的凶手。`,
     ];
-    return pick(openerTemplates)!;
+    return say(pick(openerTemplates)!);
   }
 
   // ---- 调查/讨论阶段 ----
   if (type === 'investigation' || type === 'discussion') {
     if (isMurderer) {
+      if (recentMentionsMe.length > 0) {
+        const defenseLines = [
+          `刚才有人把话头引到我身上，但我还是那句话，我和${victim}的死没有关系。与其空口怀疑我，不如把${weapon}和现场线索对应起来。`,
+          `你们怀疑我可以，但请先解释清楚证据链。现在只靠气氛带票，只会让真正的凶手继续藏在暗处。`,
+        ];
+        return say(pick(defenseLines)!);
+      }
       // 凶手策略：保持冷静、引导怀疑方向、尽量不谈凶器
       if (topSuspect && topSuspect.playerId !== player.playerId) {
         const frameLines = [
@@ -438,40 +577,47 @@ export function generateMysterySpeech(
           `大家有没有觉得 ${topSuspect.character.name} 一直在回避问题？${topSuspect.character.name} 的不在场证明"${topSuspect.character.alibi}"真的可靠吗？`,
           `我觉得 ${topSuspect.character.name} 的嫌疑很大，${victim}出事前，${topSuspect.character.name}是不是和${victim}有过接触？`,
         ];
-        return pick(frameLines)!;
+        return say(pick(frameLines)!);
       }
       if (recentDiscussions.length > 0) {
         const last = recentDiscussions[recentDiscussions.length - 1]!;
-        return `我同意 ${last.characterName} 的看法，关于${victim}的案子，我们需要更多${weapon}以外的证据，不能光靠猜测。`;
+        return say(`我同意 ${last.characterName} 的看法，关于${victim}的案子，我们需要更多${weapon}以外的证据，不能光靠猜测。`);
       }
       const evadeTemplates = [
         `我认为现在下结论太早了，${victim}的案子没那么简单，大家不要被表面现象迷惑。`,
         `这件事没那么简单，希望大家不要被别人带节奏，${victim}的死一定另有隐情。`,
         `根据我的经验，真正的凶手往往最擅长伪装，大家不要轻易怀疑一个看起来无辜的人。`,
       ];
-      return pick(evadeTemplates)!;
+      return say(pick(evadeTemplates)!);
     }
 
     // 非凶手：结合线索和讨论推理
+    if (recentMentionsMe.length > 0 && Math.random() < 0.5) {
+      const defenseTemplates = [
+        `既然有人提到我，我就把话说清楚：我的不在场证明是"${character.alibi}"。如果有人觉得我可疑，请直接拿出能对上的线索。`,
+        `我可以接受质疑，但不能接受空口断案。我的动机和行动线都摆在这里，真正该解释的是那些一直回避关键线索的人。`,
+      ];
+        return say(pick(defenseTemplates)!);
+    }
     if (discoveredClueObjs.length > 0 && Math.random() < 0.6) {
       const clue = pick(keyClues) ?? discoveredClueObjs[discoveredClueObjs.length - 1]!;
       if (clue && topSuspect) {
-        return `我们发现的${clue.isKey ? '关键' : ''}线索【${clue.name}】：${clue.revealsInfo.slice(0, 50)}……我觉得这与 ${topSuspect.character.name} 有关，大家怎么认为？`;
+        return say(`我们发现的${clue.isKey ? '关键' : ''}线索【${clue.name}】：${clue.revealsInfo.slice(0, 50)}……这条线索和 ${topSuspect.character.name} 的说法对不上，我想听听 ${topSuspect.character.name} 怎么解释。`);
       }
       if (clue) {
-        return `线索【${clue.name}】揭示了：${clue.revealsInfo}，请大家仔细分析这条线索与${victim}之死的关系。`;
+        return say(`线索【${clue.name}】揭示了：${clue.revealsInfo}，请大家仔细分析这条线索与${victim}之死的关系。`);
       }
     }
     if (topSuspect && Math.random() < 0.5) {
-      return `从目前的线索来看，${topSuspect.character.name} 的嫌疑最大，"${topSuspect.character.alibi}"这个不在场证明似乎站不住脚，而且${topSuspect.character.name}与${victim}的关系是"${topSuspect.character.relationshipToVictim}"。`;
+      return say(`从目前的线索来看，${topSuspect.character.name} 的嫌疑最大。${topSuspect.character.name} 与${victim}的关系是"${topSuspect.character.relationshipToVictim}"，而且"${topSuspect.character.alibi}"这个不在场证明也不够扎实。`);
     }
     if (recentDiscussions.length > 0 && Math.random() < 0.4) {
       const last = recentDiscussions[recentDiscussions.length - 1]!;
-      return `我注意到 ${last.characterName} 提到"${last.content.slice(0, 35)}…"，关于${victim}的案子，这点很值得深入思考。`;
+      return say(`我注意到 ${last.characterName} 刚才提到"${last.content.slice(0, 35)}…"，这句话和现在线索能不能对上，我觉得值得继续追问。`);
     }
     // 引用自己的秘密（暗示性）
     if (Math.random() < 0.3) {
-      return `${character.secret.slice(0, 45)}……我觉得这可能与${victim}的案子有关。`;
+      return say(`${character.secret.slice(0, 45)}……我觉得这可能与${victim}的案子有关。`);
     }
     const generalTemplates = [
       `根据${character.personality}的观察，我觉得${victim}的案子还有隐藏的细节，尤其是关于${weapon}的来源。`,
@@ -479,14 +625,14 @@ export function generateMysterySpeech(
       `真相往往隐藏在细节中，关于${victim}的死，我注意到一些之前被忽略的地方。`,
       `${victim}出事前，有没有人注意到什么异常？我觉得${weapon}这个凶器值得深究。`,
     ];
-    return pick(generalTemplates)!;
+    return say(pick(generalTemplates)!);
   }
 
   // ---- 指控阶段 ----
   if (type === 'accusation') {
     if (isMurderer) {
       // 凶手嫁祸：优先选高嫌疑且非凶手的人
-      const candidates = aliveOthers.filter((p) => !p.character.isMurderer).sort((a, b) => b.suspicionLevel - a.suspicionLevel);
+      const candidates = rankedSuspects.filter((p) => !p.character.isMurderer);
       const target = candidates[0] ?? aliveOthers[0];
       if (target) {
         const accuseLines = [
@@ -494,21 +640,24 @@ export function generateMysterySpeech(
           `凶手就是${target.character.name}！"${target.character.alibi}"这个不在场证明完全站不住脚，而且${weapon}上一定有${target.character.name}的痕迹！`,
           `我认定${target.character.name}就是杀害${victim}的凶手，请大家把票投给${target.character.name}！`,
         ];
-        return pick(accuseLines)!;
+        return say(pick(accuseLines)!);
       }
-      return `我觉得${aliveOthers[0]?.character.name}非常可疑，${victim}一定是${aliveOthers[0]?.character.name}杀的！`;
+      return say(`我觉得${aliveOthers[0]?.character.name}非常可疑，${victim}一定是${aliveOthers[0]?.character.name}杀的！`);
     }
     // 好人：基于线索和嫌疑投票
     if (topSuspect) {
-      if (keyClues.length > 0) {
-        return `根据关键线索【${keyClues[0]!.name}】和目前的嫌疑，我指控${topSuspect.character.name}是杀害${victim}的凶手！`;
+      if (cluePointingTopSuspect) {
+        return say(`我现在公开指控${topSuspect.character.name}。线索【${cluePointingTopSuspect.name}】已经把嫌疑锁到了 ${topSuspect.character.name} 身上，再结合TA前后的说法，我认为凶手就是TA。`);
       }
-      return `根据我们收集的所有线索，我指控${topSuspect.character.name}是凶手！${weapon}上一定有${topSuspect.character.name}的痕迹！`;
+      if (keyClues.length > 0) {
+        return say(`根据关键线索【${keyClues[0]!.name}】和目前的发言矛盾，我指控${topSuspect.character.name}是杀害${victim}的凶手！`);
+      }
+      return say(`根据我们收集的所有线索和圆桌讨论，我指控${topSuspect.character.name}是凶手。${topSuspect.character.name} 的动机、反应和不在场证明都经不起推敲。`);
     }
     if (keyClues.length > 0) {
-      return `关键线索【${keyClues[0]!.name}】指向了重要信息，但我还需要更多时间来确认凶手身份。`;
+      return say(`关键线索【${keyClues[0]!.name}】指向了重要信息，但我还需要更多时间来确认凶手身份。`);
     }
-    return `我还在调查中，但${victim}的案子一定有隐情，请大家再给我一点时间。`;
+    return say(`我还在调查中，但${victim}的案子一定有隐情，请大家再给我一点时间。`);
   }
 
   return '';
@@ -535,20 +684,16 @@ export function decideMysteryVote(
     const nonMurderers = alivePlayers.filter((p) => !p.character.isMurderer);
     // 黑警不投凶手；凶手不自投
     const safeTargets = nonMurderers.filter((p) => p.playerId !== state.murdererId);
-    const sorted = [...(safeTargets.length > 0 ? safeTargets : nonMurderers)].sort(
-      (a, b) => b.suspicionLevel - a.suspicionLevel,
-    );
+    const sorted = [...(safeTargets.length > 0 ? safeTargets : nonMurderers)].sort((a, b) => {
+      const scoreB = mysteryPublicScore(state, b) + mysteryPersonalityBias(state, player, b);
+      const scoreA = mysteryPublicScore(state, a) + mysteryPersonalityBias(state, player, a);
+      return scoreB - scoreA;
+    });
     target = sorted[0] ?? nonMurderers[Math.floor(Math.random() * nonMurderers.length)] ?? alivePlayers[0];
   } else {
     // 好人（含正直警察）：根据线索和嫌疑推理
-    const keyClue = state.clues.find((c) => c.isKey && state.discoveredClues.includes(c.id));
-    const sorted = [...alivePlayers].sort((a, b) => b.suspicionLevel - a.suspicionLevel);
-    if (keyClue) {
-      // 关键线索发现后，优先投给最高嫌疑
-      target = sorted[0] ?? alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
-    } else {
-      target = sorted[0] ?? alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
-    }
+    const sorted = rankMysterySuspectsForPlayer(state, player);
+    target = sorted[0] ?? alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
   }
 
   return { playerId: player.playerId, targetId: target.playerId };
@@ -576,6 +721,7 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
       murderWeapon: '???',
       discoveredClues: state.clues.filter((c) => state.discoveredClues.includes(c.id)),
       discussionLog: state.discussionLog,
+      publicNotes: state.publicNotes,
       voteStatus: state.voteStatus,
       votes: state.phase === 'voting' ? {} : state.votes,
       players: state.players.map((p) => ({
@@ -606,6 +752,7 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
     discoveredClues: state.clues.filter((c) => state.discoveredClues.includes(c.id)),
     totalClueCount: state.clues.length,
     discussionLog: state.discussionLog,
+    publicNotes: state.publicNotes,
     voteStatus: state.voteStatus,
     votes: state.phase === 'voting' ? {} : state.votes,
     players: state.players.map((p) => ({

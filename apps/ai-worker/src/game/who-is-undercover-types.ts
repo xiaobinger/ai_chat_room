@@ -4,10 +4,13 @@ export type UndercoverPhase = 'describing' | 'voting' | 'result';
 
 export type UndercoverRole = 'civilian' | 'undercover';
 
+export type UndercoverPersona = '谨慎试探型' | '联想发散型' | '稳健跟随型' | '大胆误导型';
+
 export interface UndercoverPlayerState {
   playerId: string;
   nickname: string;
   role: UndercoverRole;
+  persona: UndercoverPersona;
   /** 自己拿到的词 */
   word: string;
   isAlive: boolean;
@@ -37,6 +40,11 @@ export interface UndercoverGameEvent {
   timestamp: number;
 }
 
+export interface UndercoverPublicNote {
+  round: number;
+  content: string;
+}
+
 export interface UndercoverGameState {
   format: 2;
   phase: UndercoverPhase;
@@ -59,6 +67,8 @@ export interface UndercoverGameState {
   /** 连续平票轮数（僵局检测） */
   consecutiveTies: number;
   winner?: 'civilians' | 'undercover';
+  /** 全员可见的局势记忆 */
+  publicNotes: UndercoverPublicNote[];
   events: UndercoverGameEvent[];
 }
 
@@ -70,6 +80,13 @@ export const UNDERCOVER_ROLE_LABELS: Record<UndercoverRole, string> = {
 export const UNDERCOVER_ROLE_DESCRIPTIONS: Record<UndercoverRole, string> = {
   civilian: '你和大多数人拿到同一个词。认真描述自己的词，找出描述不一致的卧底。',
   undercover: '你拿到的词和其他人略有不同。模糊描述、混淆视听，活到最后即可获胜。',
+};
+
+export const UNDERCOVER_PERSONA_DESCRIPTIONS: Record<UndercoverPersona, string> = {
+  谨慎试探型: '发言偏保守，喜欢先给模糊提示，再慢慢补信息。',
+  联想发散型: '喜欢从画面、情绪和场景联想切入，描述更有画面感。',
+  稳健跟随型: '擅长顺着大多数人的方向补充，不轻易第一个跳出来。',
+  大胆误导型: '更敢主动带偏角度，用听起来合理的说法制造混乱。',
 };
 
 /** 词库：相近但不同的词对（随机取一对，随机分配平民词/卧底词） */

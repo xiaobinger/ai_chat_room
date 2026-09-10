@@ -265,6 +265,15 @@ cite,.cite-list{display:block}
 .vote-btn{display:flex;align-items:center;gap:8px;padding:8px 16px;background:#13141a;border:1px solid #252630;border-radius:8px;cursor:pointer;font-size:12px;color:#ececf2;transition:all .2s}
 .vote-btn:hover{border-color:#7457ff}
 .vote-btn.voted{background:#7457ff;border-color:#7457ff;color:#fff}
+.vote-btn.locked{background:linear-gradient(135deg,#2a2440,#171827);border-color:#8e78ff;color:#fff;box-shadow:0 0 0 1px #8e78ff,0 0 18px #7457ff30;animation:voteLockPulse .7s ease}
+@keyframes voteLockPulse{0%{transform:scale(.98)}50%{transform:scale(1.03)}100%{transform:scale(1)}}
+@keyframes winnerReveal{0%{opacity:0;transform:translateY(10px) scale(.98)}100%{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes resultRevealIn{to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes phaseSpotlightIn{0%{opacity:0;transform:translateY(-8px) scale(.985)}100%{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes phaseSpotlightOut{to{opacity:0;transform:translateY(-6px) scale(.99);max-height:0;padding-top:0;padding-bottom:0;margin-bottom:-8px;border-width:0}}
+@keyframes phaseShine{0%{transform:translateX(-120%)}100%{transform:translateX(120%)}}
+@keyframes stageVeilIn{0%{opacity:0}100%{opacity:1}}
+@keyframes stageVeilOut{to{opacity:0}}
 .vote-results{margin-top:16px;padding-top:16px;border-top:1px solid #252630}
 .vote-results h4{margin:0 0 12px;font-size:12px;color:#8e90a0}
 .vote-count{display:flex;justify-content:space-between;padding:6px 0;font-size:12px}
@@ -272,7 +281,36 @@ cite,.cite-list{display:block}
 
 /* ===== 通用游戏视图（四游戏共用） ===== */
 .game-view{display:grid;gap:16px}
+.game-view{position:relative}
 .game-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;background:#0b0c11;border:1px solid #252630;border-radius:12px}
+.stage-veil{position:fixed;inset:0;z-index:40;display:grid;place-items:center;pointer-events:none;background:radial-gradient(circle at center,#ffffff10 0%,#111219e6 45%,#090a0fcc 100%);backdrop-filter:blur(4px);animation:stageVeilIn .32s ease,stageVeilOut .44s ease .38s forwards}
+.stage-veil.warn{background:radial-gradient(circle at center,#ffcf5d18 0%,#17130de6 45%,#090a0fcc 100%)}
+.stage-veil.danger{background:radial-gradient(circle at center,#ff6f911f 0%,#180d11eb 45%,#090a0fcc 100%)}
+.stage-veil-copy{display:grid;gap:6px;padding:18px 22px;min-width:min(420px,calc(100vw - 40px));text-align:center;border-radius:18px;border:1px solid #3a3d53;background:linear-gradient(135deg,#171826,#0d0e13);box-shadow:0 18px 46px #00000050;animation:winnerReveal .38s ease}
+.stage-veil-copy small{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#aeb2d8}
+.stage-veil-copy b{font-size:22px;color:#f5f5fb}
+.stage-veil-copy p{margin:0;font-size:13px;line-height:1.7;color:#b8bccd}
+.phase-spotlight{position:relative;overflow:hidden;display:grid;gap:6px;padding:14px 16px;border-radius:14px;border:1px solid #32344b;background:linear-gradient(135deg,#1a1b29,#0d0e13);box-shadow:0 12px 28px #00000024;animation:phaseSpotlightIn .55s ease,phaseSpotlightOut .45s ease 1.25s forwards}
+.phase-spotlight.warn{border-color:#5f4d24;background:linear-gradient(135deg,#231d12,#0d0e13)}
+.phase-spotlight.danger{border-color:#5f313a;background:linear-gradient(135deg,#231319,#0d0e13)}
+.phase-spotlight::after{content:'';position:absolute;inset:0;background:linear-gradient(110deg,transparent 0%,#ffffff14 45%,transparent 75%);transform:translateX(-120%);animation:phaseShine 1.1s ease}
+.phase-spotlight-kicker{position:relative;z-index:1;font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#a8acf4}
+.phase-spotlight b{position:relative;z-index:1;font-size:18px;color:#ececf2}
+.phase-spotlight p{position:relative;z-index:1;margin:0;font-size:12px;line-height:1.6;color:#b3b6c6}
+.bgm-toggle{white-space:nowrap}
+.bgm-toggle.on{border-color:#3a4a38;background:#162019;color:#9ff0bf}
+.bgm-toggle.off{border-color:#3a3040;background:#17131f;color:#cbb8ff}
+.bgm-panel{display:flex;justify-content:space-between;gap:18px;align-items:center;padding:16px 18px;margin-bottom:16px;background:linear-gradient(135deg,#141521,#0b0c11);border:1px solid #2b2d3b;border-radius:14px;box-shadow:0 10px 32px #00000026}
+.bgm-copy{display:grid;gap:5px}
+.bgm-copy small{font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:#8b8ea2}
+.bgm-copy b{font-size:15px;color:#ececf2}
+.bgm-copy p{margin:0;font-size:12px;line-height:1.6;color:#9fa2b4;max-width:620px}
+.bgm-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end}
+.bgm-pill{white-space:nowrap}
+.bgm-pill.on{border-color:#30463a;background:#142119;color:#9ff0bf}
+.bgm-pill.off{border-color:#433041;background:#1d1620;color:#ffbdd3}
+.bgm-slider{display:grid;gap:6px;min-width:180px;font-size:11px;color:#9fa2b4}
+.bgm-slider input[type=range]{width:100%;padding:0;background:none;border:0;accent-color:#8e78ff}
 .phase-badge.night{background:#2a2a45}
 .phase-badge.day{background:#8a6a1f}
 .phase-badge.vote{background:#a14a2e}
@@ -287,6 +325,17 @@ cite,.cite-list{display:block}
 .role-card small{font-size:10px;color:#8e90a0;letter-spacing:1px}
 .role-card b{font-size:18px;color:#ececf2}
 .role-card p{margin:0;font-size:12px;color:#8e90a0;line-height:1.5}
+.host-summary-card{display:grid;gap:10px;padding:18px 20px;border-radius:14px;border:1px solid #30314a;background:linear-gradient(135deg,#1b1c2a,#0d0e13);box-shadow:0 12px 30px #00000028}
+.host-summary-card.warn{border-color:#5a4a25;background:linear-gradient(135deg,#231d12,#0d0e13)}
+.host-summary-card.danger{border-color:#5a2f38;background:linear-gradient(135deg,#23131a,#0d0e13)}
+.host-summary-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.host-summary-kicker{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#b8abff}
+.host-summary-kicker svg{color:#ffbd75}
+.host-summary-label{padding:4px 10px;border-radius:999px;background:#171927;border:1px solid #30314a;font-size:10px;color:#a8adc4}
+.host-summary-card h4{margin:0;font-size:18px;color:#ececf2}
+.host-summary-card p{margin:0;font-size:13px;line-height:1.7;color:#d4d4dc}
+.host-summary-tags{display:flex;flex-wrap:wrap;gap:8px}
+.host-summary-tags span{padding:6px 10px;border-radius:999px;background:#141522;border:1px solid #30314a;font-size:11px;color:#ffdd9a}
 .role-card.wolf{border-color:#5a2a35;background:linear-gradient(135deg,#2a1520,#0d0e13)}
 .role-card.wolf b{color:#ff9b91}
 .role-card.character{border-color:#2a3a5a}
@@ -298,6 +347,25 @@ cite,.cite-list{display:block}
 .winner-banner.good{background:#12241a;border-color:#2a5a3a;color:#5ee9a3}
 .winner-banner.bad{background:#241214;border-color:#5a2a35;color:#ff9b91}
 .winner-banner.neutral{background:#1a1a24;border-color:#30313b;color:#d6d7df}
+.winner-banner.reveal{animation:winnerReveal .7s ease}
+.reveal-banner{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 18px;border-radius:14px;border:1px solid #31344a;background:linear-gradient(135deg,#171927,#0d0e13);box-shadow:0 12px 28px #00000024;animation:winnerReveal .55s ease}
+.reveal-banner.warn{border-color:#614f24;background:linear-gradient(135deg,#221c11,#0d0e13)}
+.reveal-banner.danger{border-color:#64343d;background:linear-gradient(135deg,#241319,#0d0e13)}
+.reveal-banner-copy{display:grid;gap:4px}
+.reveal-banner-copy small{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:#aaadd0}
+.reveal-banner-copy b{font-size:17px;color:#ececf2}
+.reveal-banner-copy p{margin:0;font-size:12px;line-height:1.6;color:#b7bac9}
+.reveal-banner-tags{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.reveal-banner-tags span{padding:6px 10px;border-radius:999px;background:#151726;border:1px solid #30324a;color:#ffdd9a;font-size:11px}
+.result-reveal-card{padding:14px 28px;border-radius:12px;border:1px solid #31344a;text-align:center;display:grid;gap:4px;background:linear-gradient(135deg,#171927,#0d0e13);opacity:0;transform:translateY(10px) scale(.98);animation:resultRevealIn .55s ease forwards}
+.result-reveal-card small{font-size:10px;color:#8e90a0}
+.result-reveal-card b{font-size:22px}
+.result-reveal-card.good{background:#12241a;border-color:#2a5a3a}
+.result-reveal-card.good b{color:#5ee9a3}
+.result-reveal-card.bad{background:#241214;border-color:#5a2a35}
+.result-reveal-card.bad b{color:#ff9b91}
+.result-reveal-card.warn{background:#241d11;border-color:#665026}
+.result-reveal-card.warn b{color:#ffbd75}
 .info-block{display:flex;gap:10px;padding:12px 16px;background:#13141a;border:1px solid #2e2943;border-radius:10px;font-size:12px;color:#d4d4dc;align-items:flex-start}
 .info-block svg{flex:0 0 auto;margin-top:2px;color:#ffbd75}
 .info-block b{display:block;margin-bottom:4px}
@@ -319,20 +387,32 @@ cite,.cite-list{display:block}
 .chip-tag.muted{background:#20212a;color:#8e90a0}
 .player-chip.me{border-color:#7457ff}
 .player-chip.speaking{border-color:#ffbd75;box-shadow:0 0 0 1px #ffbd75}
+.player-chip.focus{border-color:#ffbd75;background:linear-gradient(135deg,#1c1822,#13141a);box-shadow:0 0 0 1px #ffbd7540,0 0 22px #ffbd7518}
 .game-section{background:#0b0c11;border:1px solid #252630;border-radius:12px;padding:16px}
 .game-section h4{margin:0 0 12px;font-size:14px;color:#ececf2;display:flex;align-items:center;gap:8px}
 .game-timeline{background:#0b0c11;border:1px solid #252630;border-radius:12px;padding:16px}
 .game-timeline h4{margin:0 0 12px;font-size:14px;color:#ececf2}
+.timeline-flash{display:grid;gap:4px;padding:12px 14px;margin-bottom:12px;border-radius:12px;border:1px solid #33354a;background:linear-gradient(135deg,#161725,#0f1015);animation:winnerReveal .45s ease}
+.timeline-flash small{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:#a9add0}
+.timeline-flash b{font-size:13px;color:#ececf2;line-height:1.6}
+.timeline-flash span{font-size:10px;color:#8e90a0}
+.timeline-flash.player_death,.timeline-flash.player_eliminated{border-color:#64343d;background:linear-gradient(135deg,#221318,#100d10)}
+.timeline-flash.vote_result{border-color:#665026;background:linear-gradient(135deg,#241d11,#100f0b)}
+.timeline-flash.game_end{border-color:#6a3658;background:linear-gradient(135deg,#24131f,#100d10)}
+.timeline-item.focused .timeline-content{border-color:#4e406e;background:linear-gradient(135deg,#171524,#101116)}
+.timeline-item.focused .timeline-dot{box-shadow:0 0 0 4px #7457ff22}
 .speech-input{display:grid;gap:8px}
 .speech-input textarea{width:100%;background:#13141a;border:1px solid #2e2943;border-radius:8px;padding:10px 12px;font-size:13px;color:#ececf2;resize:vertical;font-family:inherit}
 .speech-input textarea:focus{outline:none;border-color:#7457ff}
 .speech-actions{display:flex;gap:8px}
 .action-btn.ghost{background:transparent;color:#8e90a0;border:1px dashed #30313b}
+.action-btn.ghost.locked{border-style:solid;border-color:#7457ff;background:#1d1930;color:#ececf2}
 .action-btn.danger{background:#a13348;color:#fff}
 .vote-btn.danger:hover{border-color:#ff758c}
 .day-messages{display:grid;gap:8px;max-height:280px;overflow-y:auto}
 .day-message{padding:8px 12px;background:#13141a;border-radius:8px;font-size:12px;color:#d4d4dc;line-height:1.5}
 .day-message b{color:#ad9eff;margin-right:4px}
+.day-message.focus{border:1px solid #4a3e71;background:linear-gradient(135deg,#191625,#11121a)}
 .day-message.mine{border-left:2px solid #7457ff}
 .target-select p{margin:0 0 4px;font-size:12px;color:#d4d4dc;display:flex;align-items:center;gap:6px}
 .witch-panel{display:grid;gap:10px}
@@ -402,6 +482,13 @@ button,a,input,textarea,select{
 
   /* 游戏工具栏：紧凑换行 */
   .game-toolbar{gap:8px;padding:10px 12px}
+  .phase-spotlight b{font-size:16px}
+  .stage-veil-copy{min-width:calc(100vw - 32px);padding:16px 18px}
+  .stage-veil-copy b{font-size:18px}
+  .bgm-panel{align-items:flex-start}
+  .host-summary-card{padding:16px}
+  .host-summary-card h4{font-size:16px}
+  .reveal-banner{align-items:flex-start}
   .game-toolbar .phase-badge{font-size:11px;padding:6px 10px}
   .game-toolbar .player-count{font-size:11px}
   .game-toolbar .countdown{font-size:12px;padding:5px 10px}
@@ -477,6 +564,17 @@ button,a,input,textarea,select{
   /* 阶段徽章 */
   .phase-badge{font-size:11px;padding:6px 12px}
   .phase-badge small{display:none}
+  .phase-spotlight{padding:12px 14px}
+  .phase-spotlight p{font-size:11px}
+  .reveal-banner{display:grid}
+  .reveal-banner-tags{justify-content:flex-start}
+  .result-reveal-card{padding:12px 18px}
+  .result-reveal-card b{font-size:18px}
+  .bgm-panel{display:grid}
+  .bgm-controls{justify-content:flex-start}
+  .bgm-slider{min-width:0}
+  .host-summary-head{align-items:flex-start}
+  .host-summary-tags span{font-size:10px}
 
   /* 顶部栏 */
   .top{padding:16px 20px;flex-wrap:wrap;gap:10px}

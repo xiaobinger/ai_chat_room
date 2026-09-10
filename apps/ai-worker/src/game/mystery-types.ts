@@ -93,6 +93,8 @@ export interface MysteryGameState {
   observations: DetectiveObservation[];
   /** 悄悄话记录 */
   secretChats: SecretConversation[];
+  /** 全员可见的局势记忆 */
+  publicNotes: { round: number; content: string }[];
   /** 凶手独白（reveal 阶段生成） */
   monologue?: MurdererMonologue;
   /** 详细复盘（reveal 阶段生成） */

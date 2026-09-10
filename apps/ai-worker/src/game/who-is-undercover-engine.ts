@@ -2,6 +2,7 @@ import type {
   UndercoverGameState,
   UndercoverPlayerState,
   UndercoverGameEvent,
+  UndercoverPersona,
 } from './who-is-undercover-types';
 import { WORD_PAIRS } from './who-is-undercover-types';
 import { GameError } from './errors';
@@ -20,6 +21,10 @@ function shuffle<T>(list: T[]): T[] {
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
+}
+
+function pick<T>(list: T[]): T | undefined {
+  return list.length > 0 ? list[Math.floor(Math.random() * list.length)] : undefined;
 }
 
 function logEvent(
@@ -52,6 +57,36 @@ function getSeatNumber(state: UndercoverGameState, playerId: string): number | n
   return index >= 0 ? index + 1 : null;
 }
 
+const UNDERCOVER_PERSONAS: UndercoverPersona[] = ['谨慎试探型', '联想发散型', '稳健跟随型', '大胆误导型'];
+
+function assignUndercoverPersona(role: 'civilian' | 'undercover'): UndercoverPersona {
+  if (role === 'undercover') return Math.random() < 0.5 ? '大胆误导型' : '稳健跟随型';
+  return pick(UNDERCOVER_PERSONAS.filter((persona) => persona !== '大胆误导型')) ?? '谨慎试探型';
+}
+
+function rememberPublicNote(state: UndercoverGameState, content: string): void {
+  const trimmed = content.trim();
+  if (!trimmed) return;
+  const last = state.publicNotes[state.publicNotes.length - 1];
+  if (last?.content === trimmed && last.round === state.round) return;
+  state.publicNotes.push({ round: state.round, content: trimmed });
+}
+
+function personaLead(player: UndercoverPlayerState): string {
+  switch (player.persona) {
+    case '谨慎试探型':
+      return '我先说得保守一点，';
+    case '联想发散型':
+      return '我脑子里的画面感比较强，';
+    case '稳健跟随型':
+      return '我先顺着大家能理解的方向说，';
+    case '大胆误导型':
+      return '我换个不那么直白的角度讲，';
+    default:
+      return '';
+  }
+}
+
 export function getAlivePlayers(state: UndercoverGameState): UndercoverPlayerState[] {
   return state.players.filter((p) => p.isAlive);
 }
@@ -78,6 +113,7 @@ export function initUndercoverState(
       playerId: p.playerId,
       nickname: p.nickname,
       role: undercoverIds.has(p.playerId) ? 'undercover' : 'civilian',
+      persona: assignUndercoverPersona(undercoverIds.has(p.playerId) ? 'undercover' : 'civilian'),
       word: undercoverIds.has(p.playerId) ? undercoverWord : civilianWord,
       isAlive: true,
       hasDescribed: false,
@@ -91,6 +127,7 @@ export function initUndercoverState(
     votes: {},
     voteStatus: {},
     consecutiveTies: 0,
+    publicNotes: [{ round: 1, content: '开局提醒：先给模糊但可共鸣的描述，别急着把词说得太死。' }],
     events: [
       {
         id: crypto.randomUUID(),
@@ -153,6 +190,16 @@ export function startVoting(state: UndercoverGameState): void {
   state.phase = 'voting';
   state.votes = {};
   state.voteStatus = {};
+  const roundDescriptions = state.descriptions.filter((description) => description.round === state.round);
+  const outliers = analyzeDescriptionOutliers(state);
+  const topOutlier = [...outliers.entries()].sort((a, b) => b[1] - a[1])[0];
+  const focusPlayer = topOutlier ? state.players.find((player) => player.playerId === topOutlier[0]) : undefined;
+  rememberPublicNote(
+    state,
+    roundDescriptions.length > 0
+      ? `第 ${state.round} 轮描述已结束。${focusPlayer ? `目前最像“没跟上大多数人节奏”的是 ${focusPlayer.nickname}。` : '目前还没有绝对的离群对象。'}`
+      : `第 ${state.round} 轮描述已结束，准备进入投票。`,
+  );
   logEvent(state, 'phase_change', `第 ${state.round} 轮描述结束，进入投票`);
 }
 
@@ -223,6 +270,7 @@ export function resolveUndercoverVote(state: UndercoverGameState): void {
 
   if (tie || !eliminated || maxVotes === 0) {
     state.consecutiveTies += 1;
+    rememberPublicNote(state, `第 ${state.round} 轮出现平票僵局，说明大家对“谁更像异类”仍未形成共识。`);
     logEvent(state, 'vote_result', `平票，本轮无人出局（连续僵局第 ${state.consecutiveTies} 轮）`);
     if (state.consecutiveTies >= 3) {
       resolveTiebreak(state);
@@ -234,6 +282,7 @@ export function resolveUndercoverVote(state: UndercoverGameState): void {
     target.isAlive = false;
     target.eliminatedRound = state.round;
     state.eliminatedThisRound = { playerId: eliminated, role: target.role };
+    rememberPublicNote(state, `${target.nickname} 在第 ${state.round} 轮被集中投出，场上会据此重新调整怀疑方向。`);
     logEvent(
       state,
       'player_eliminated',
@@ -274,7 +323,8 @@ export function nextRound(state: UndercoverGameState): void {
   const rest = state.order.slice(1);
   state.order = [...rest, first];
   state.orderCursor = 0;
-  logEvent(state, 'phase_change', `第 ${state.round} 轮描述开始，从 ${findPlayer(state, state.order[0]).nickname} 开始`);
+  rememberPublicNote(state, `第 ${state.round} 轮开始，所有人需要换个角度描述，别直接重复上一轮的话。`);
+  logEvent(state, 'phase_change', `第 ${state.round} 轮描述开始，从 ${findPlayer(state, state.order[0]).nickname} 开始。本轮请尽量换个角度描述，不要重复上一轮原话。`);
 }
 
 /** 连续 3 轮平票僵局：按嫌疑值最高者淘汰，强制打破僵局 */
@@ -313,12 +363,23 @@ function wordHints(word: string): { place: string; feeling: string; color: strin
   };
 }
 
+function extractHintTags(text: string): string[] {
+  const cleaned = text.replace(/[，。！？、；：“”"'（）()…\s]/g, '');
+  const tags = new Set<string>();
+  for (let i = 0; i < cleaned.length; i++) {
+    const single = cleaned[i];
+    if (single) tags.add(single);
+    if (i < cleaned.length - 1) tags.add(cleaned.slice(i, i + 2));
+  }
+  return [...tags].filter((tag) => tag.length > 0);
+}
+
 /** 计算两个描述文本的相似度（基于关键词重叠） */
 function descriptionSimilarity(a: string, b: string): number {
-  const charsA = new Set(a.replace(/[，。！？、的了我是在和它有给感觉如果说到它通常和某个特定场景联系一起身边不少朋友都喜欢生活里很常见东西脑海里有一幅具体画面经常能见到]/g, '').split(''));
-  const charsB = new Set(b.replace(/[，。！？、的了我是在和它有给感觉如果说到它通常和某个特定场景联系一起身边不少朋友都喜欢生活里很常见东西脑海里有一幅具体画面经常能见到]/g, '').split(''));
-  const common = [...charsA].filter((c) => charsB.has(c)).length;
-  const union = new Set([...charsA, ...charsB]).size;
+  const tagsA = new Set(extractHintTags(a));
+  const tagsB = new Set(extractHintTags(b));
+  const common = [...tagsA].filter((tag) => tagsB.has(tag)).length;
+  const union = new Set([...tagsA, ...tagsB]).size;
   return union === 0 ? 0 : common / union;
 }
 
@@ -328,21 +389,36 @@ export function generateUndercoverDescription(state: UndercoverGameState, player
   const round = state.round;
   const isUndercover = player.role === 'undercover';
   const prevDescriptions = state.descriptions.filter((d) => d.round === round);
+  const previousOwnDescriptions = state.descriptions.filter((d) => d.playerId === player.playerId);
+  const dominantAngle = prevDescriptions.length > 0 ? prevDescriptions[prevDescriptions.length - 1]?.content : '';
+
+  const angleTemplates = {
+    scene: `我会把它和${hints.place}这个场景联系起来。`,
+    feeling: `它给人的第一感觉更偏${hints.feeling}。`,
+    color: `如果非要用颜色概括，我第一反应是${hints.color}。`,
+    category: `它在我脑子里更像一种${hints.category}。`,
+    daily: `这个东西离日常生活不远，很多人其实经常接触。`,
+    function: `我会更想从“它能拿来干什么”这个角度去描述。`,
+    exclusion: `它不是那种特别张扬的东西，但一提到相关场景就会想到它。`,
+  } as const;
+  const unusedAngles = Object.values(angleTemplates).filter(
+    (template) => !previousOwnDescriptions.some((description) => description.content === template),
+  );
 
   // 第一轮：基础描述
   if (round === 1) {
     const templates = [
-      `我想到的东西在${hints.place}经常能见到。`,
-      `它给我的感觉是${hints.feeling}的。`,
-      `如果要给它一个颜色，我觉得是${hints.color}。`,
-      `它是一种${hints.category}，大家应该都接触过。`,
-      `说到它，我脑海里有一幅具体的画面。`,
+      angleTemplates.scene,
+      angleTemplates.feeling,
+      angleTemplates.color,
+      angleTemplates.category,
+      angleTemplates.daily,
     ];
     // 卧底在第一轮更谨慎，选模糊的描述
     if (isUndercover && Math.random() < 0.4) {
-      return `这个东西嘛...我觉得大家都应该知道，不太好具体形容。`;
+      return `${personaLead(player)}这个词我不想说得太实，但它应该是大家都见过、也不算陌生的东西。`;
     }
-    return templates[Math.floor(Math.random() * templates.length)];
+    return `${personaLead(player)}${templates[Math.floor(Math.random() * templates.length)]}`;
   }
 
   // 后续轮次：参考前文，增加深度
@@ -350,22 +426,22 @@ export function generateUndercoverDescription(state: UndercoverGameState, player
     if (isUndercover) {
       // 卧底：尝试模仿多数人的描述方向，但制造细微偏差
       const mimicTemplates = [
-        `我同意刚才说的，不过我觉得还有另一层意思。`,
-        `和前面说的差不多，但我想到的角度略有不同。`,
-        `嗯，大家说的都有道理，我的想法也类似。`,
-        `我补充一点，它确实和${hints.category}有关，但不止于此。`,
+        `前面有人提到"${dominantAngle?.slice(0, 10) ?? '那个方向'}"，我大致也能往那个方向理解，但我更想从别的角度补一句。`,
+        `和前面的描述不冲突，不过我想到的是另外一个场景，不一定完全一样。`,
+        `我理解大家在说什么，我补充一点：它可能确实和${hints.category}有关，但我脑子里先跳出来的是别的画面。`,
+        `我不完全反对前面的说法，只是我会把它想得更偏${hints.feeling}一点。`,
       ];
-      return mimicTemplates[Math.floor(Math.random() * mimicTemplates.length)];
+      return `${personaLead(player)}${mimicTemplates[Math.floor(Math.random() * mimicTemplates.length)]}`;
     }
 
     // 平民：基于自己的词深入描述，与同阵营产生共鸣
     const deepTemplates = [
-      `刚才有人提到了，确实如此。我的词更偏向${hints.category}类。`,
-      `我同意前面说的。如果要具体一点，它和${hints.place}关系密切。`,
-      `前面描述的方向我认同，${hints.feeling}是我对它的直观感受。`,
-      `综合大家的说法，我的词应该不难猜，是${hints.category}的一种。`,
+      unusedAngles[0] ?? `我再换个角度说，它和${hints.place}这个场景关系很密切。`,
+      `前面描述的方向我基本认同，但我更想强调它给人的感觉是${hints.feeling}。`,
+      `如果上一轮大家都在说外观，那我这一轮想说用途，它通常不会脱离日常场景。`,
+      `综合大家的说法，我的词不算离谱，它和${hints.category}这条线是对得上的。`,
     ];
-    return deepTemplates[Math.floor(Math.random() * deepTemplates.length)];
+    return `${personaLead(player)}${deepTemplates[Math.floor(Math.random() * deepTemplates.length)]}`;
   }
 
   // 兜底
@@ -374,7 +450,7 @@ export function generateUndercoverDescription(state: UndercoverGameState, player
     `说到它，我脑海里有一幅具体的画面。`,
     `它通常和某个特定的场景联系在一起。`,
   ];
-  return fallback[Math.floor(Math.random() * fallback.length)];
+  return `${personaLead(player)}${fallback[Math.floor(Math.random() * fallback.length)]}`;
 }
 
 /** 分析描述偏离度：找出与其他人描述差异最大的玩家 */
@@ -398,6 +474,14 @@ function analyzeDescriptionOutliers(state: UndercoverGameState): Map<string, num
   return outlierScores;
 }
 
+function publicNoteConsensus(state: UndercoverGameState, player: UndercoverPlayerState): number {
+  return state.publicNotes.reduce((score, note) => (note.content.includes(player.nickname) ? score + 1 : score), 0);
+}
+
+function undercoverVoteScore(state: UndercoverGameState, player: UndercoverPlayerState, outliers: Map<string, number>): number {
+  return player.suspicion * 2 + (outliers.get(player.playerId) ?? 0) * 4 + publicNoteConsensus(state, player);
+}
+
 /** AI 投票：卧底投平民，平民按嫌疑+描述偏离度投票 */
 export function decideUndercoverVote(
   state: UndercoverGameState,
@@ -409,25 +493,55 @@ export function decideUndercoverVote(
   if (player.role === 'undercover') {
     const civilians = alive.filter((p) => p.role === 'civilian');
     if (civilians.length === 0) return { targetId: null };
-    // 卧底策略：投嫌疑最低的平民（避免投嫌疑高的引起注意）
-    // 但如果到了后期（剩余人数少），改为投嫌疑最高的平民加速获胜
+    const outliers = analyzeDescriptionOutliers(state);
+    const scored = [...civilians]
+      .map((candidate) => ({
+        player: candidate,
+        score: undercoverVoteScore(state, candidate, outliers),
+      }))
+      .sort((a, b) => b.score - a.score);
     const aliveCount = alive.length;
     if (aliveCount <= 3) {
-      const sorted = [...civilians].sort((a, b) => b.suspicion - a.suspicion);
-      return { targetId: sorted[0].playerId };
+      return { targetId: scored[0].player.playerId };
     }
-    const sorted = [...civilians].sort((a, b) => a.suspicion - b.suspicion);
-    return { targetId: sorted[0].playerId };
+    if (player.persona === '稳健跟随型') {
+      return { targetId: scored[0].player.playerId };
+    }
+    if (player.persona === '大胆误导型') {
+      if (scored.length > 1 && Math.random() < 0.45) {
+        return { targetId: scored[1].player.playerId };
+      }
+      if (Math.random() < 0.2) {
+        return { targetId: scored[scored.length - 1].player.playerId };
+      }
+      return { targetId: scored[0].player.playerId };
+    }
+    return { targetId: scored[0].player.playerId };
   }
 
   // 平民：综合嫌疑值和描述偏离度投票
   const outliers = analyzeDescriptionOutliers(state);
   const scored = alive.map((p) => ({
     player: p,
-    score: p.suspicion + (outliers.get(p.playerId) ?? 0) * 3,
+    score: undercoverVoteScore(state, p, outliers),
   }));
   scored.sort((a, b) => b.score - a.score);
 
+  if (player.persona === '谨慎试探型') {
+    const gap = (scored[0]?.score ?? 0) - (scored[1]?.score ?? 0);
+    if ((scored[0]?.score ?? 0) < 1.5 || gap < 0.6) return { targetId: null };
+    return { targetId: scored[0].player.playerId };
+  }
+  if (player.persona === '联想发散型') {
+    const sortedByOutlier = [...alive].sort((a, b) => (outliers.get(b.playerId) ?? 0) - (outliers.get(a.playerId) ?? 0));
+    const outlierTarget = sortedByOutlier[0];
+    if (outlierTarget && (outliers.get(outlierTarget.playerId) ?? 0) > 0.22) {
+      return { targetId: outlierTarget.playerId };
+    }
+  }
+  if (player.persona === '稳健跟随型') {
+    return { targetId: scored[0]?.player.playerId ?? null };
+  }
   if (scored[0] && scored[0].score > 0) return { targetId: scored[0].player.playerId };
   if (Math.random() < 0.1) return { targetId: null };
   return { targetId: scored[0].player.playerId };
@@ -448,6 +562,7 @@ export function getUndercoverView(state: UndercoverGameState, playerId: string |
       nickname: p.nickname,
       seatNumber: getSeatNumber(state, p.playerId),
       isAlive: p.isAlive,
+      persona: finished ? p.persona : p.playerId === playerId ? p.persona : undefined,
       role: finished ? p.role : undefined,
       word: finished ? p.word : undefined,
       isMe: p.playerId === playerId,
@@ -455,6 +570,7 @@ export function getUndercoverView(state: UndercoverGameState, playerId: string |
     })),
     myWord: me?.word,
     myRole: me?.role,
+    myPersona: me?.persona,
     descriptions: state.descriptions,
     order: state.order,
     orderCursor: state.orderCursor,
@@ -465,6 +581,7 @@ export function getUndercoverView(state: UndercoverGameState, playerId: string |
     winner: state.winner,
     civilianWord: finished ? state.civilianWord : undefined,
     undercoverWord: finished ? state.undercoverWord : undefined,
+    publicNotes: state.publicNotes,
     events: state.events,
   };
 }

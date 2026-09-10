@@ -1,9 +1,13 @@
 import { BookOpen, Fingerprint, Search, Sparkles } from 'lucide-react';
 import {
   Countdown,
+  HostSummaryCard,
+  InfoBlock,
+  PhaseSpotlight,
   PlayerChips,
   PlayerCount,
   SpeechInput,
+  StageVeil,
   Timeline,
   VoteGrid,
   WinnerBanner,
@@ -38,6 +42,7 @@ interface MysteryViewState extends GameViewState {
   crimeScene?: string;
   murderWeapon?: string;
   myCharacter?: MysteryCharacter;
+  publicNotes?: { round: number; content: string }[];
   discoveredClues?: MysteryClue[];
   totalClueCount?: number;
   discussionLog?: { playerId: string; playerName: string; characterName: string; content: string; type: string }[];
@@ -48,8 +53,25 @@ const MYSTERY_PHASE_LABELS: Record<string, string> = {
   introduction: '自我介绍',
   investigation: '搜证',
   discussion: '圆桌讨论',
+  accusation: '公开指控',
   voting: '最终指认',
   reveal: '真相揭晓',
+};
+
+const DISCUSSION_TYPE_LABELS: Record<string, string> = {
+  statement: '陈述',
+  question: '追问',
+  accusation: '指控',
+  defense: '辩解',
+};
+
+const MYSTERY_PHASE_COPY: Record<string, { title: string; subtitle: string; tone: 'neutral' | 'warn' | 'danger' }> = {
+  introduction: { title: '角色入场', subtitle: '每个人都在用第一句话塑造自己的可信度。', tone: 'neutral' },
+  investigation: { title: '现场搜证', subtitle: '证据正在浮出水面，谁被线索反复提到就越危险。', tone: 'neutral' },
+  discussion: { title: '圆桌对峙', subtitle: '动机、证词与情绪开始互相冲撞，真正的裂缝会在这里出现。', tone: 'warn' },
+  accusation: { title: '公开指控', subtitle: '所有怀疑正在收束成最终指向，误判也会被无限放大。', tone: 'danger' },
+  voting: { title: '最终指认', subtitle: '真凶只差最后一票，局势已没有多少回旋空间。', tone: 'danger' },
+  reveal: { title: '真相揭晓', subtitle: '所有秘密与谎言都会在这一刻被掀开。', tone: 'danger' },
 };
 
 export function MysteryView({
@@ -78,9 +100,19 @@ export function MysteryView({
     .filter((player) => player.isAlive && typeof player.suspicionLevel === 'number')
     .sort((a, b) => (b.suspicionLevel ?? 0) - (a.suspicionLevel ?? 0))
     .slice(0, 3);
+  const recentPublicNotes = (view.publicNotes ?? []).slice(-3).reverse();
+  const hostSummary = recentPublicNotes[0];
+  const highlightedSuspects = suspectBoard.map((player) => `${player.seatNumber ? `${player.seatNumber}号` : ''}${player.nickname}`);
+  const focusTerms = suspectBoard.flatMap((player) => [player.nickname, player.character?.name ?? '']).filter(Boolean);
 
   return (
     <div className="game-view mystery">
+      <StageVeil
+        stageKey={`${view.round}-${view.phase}`}
+        title={MYSTERY_PHASE_COPY[view.phase]?.title ?? '案情推进'}
+        subtitle={MYSTERY_PHASE_COPY[view.phase]?.subtitle}
+        tone={MYSTERY_PHASE_COPY[view.phase]?.tone ?? 'neutral'}
+      />
       <div className="game-toolbar">
         <span className="phase-badge day">
           <BookOpen size={15} />
@@ -90,6 +122,13 @@ export function MysteryView({
         <PlayerCount players={view.players} />
         <Countdown deadline={finished ? null : deadline} onExpire={refresh} />
       </div>
+
+      <PhaseSpotlight
+        phaseKey={`${view.round}-${view.phase}`}
+        title={MYSTERY_PHASE_COPY[view.phase]?.title ?? '案情推进'}
+        subtitle={MYSTERY_PHASE_COPY[view.phase]?.subtitle ?? '每次阶段推进都可能让真相更近一步。'}
+        tone={MYSTERY_PHASE_COPY[view.phase]?.tone ?? 'neutral'}
+      />
 
       <div className="case-dossier">
         <div>
@@ -144,6 +183,40 @@ export function MysteryView({
         </div>
       )}
 
+      {view.myCharacter?.personality && !finished && (
+        <InfoBlock>
+          <Sparkles size={14} />
+          <div>
+            <b>角色气质：{view.myCharacter.personality}</b>
+            <p>发言时尽量贴合这个性格去表达，会更像真人在场推理。</p>
+          </div>
+        </InfoBlock>
+      )}
+
+      {hostSummary && (
+        <HostSummaryCard
+          title="案件焦点播报"
+          label={`第 ${hostSummary.round} 轮`}
+          summary={hostSummary.content}
+          highlights={highlightedSuspects}
+          tone={view.phase === 'accusation' || view.phase === 'voting' ? 'danger' : 'warn'}
+        />
+      )}
+
+      {(view.publicNotes ?? []).length > 0 && (
+        <div className="game-section">
+          <h4>案件焦点</h4>
+          <div className="day-messages">
+            {recentPublicNotes.map((note, index) => (
+              <div key={`${note.round}-${index}`} className={`day-message ${index === 0 ? 'focus' : ''}`}>
+                <b>第 {note.round} 轮：</b>
+                <span>{note.content}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {suspectBoard.length > 0 && !finished && (
         <div className="game-section">
           <h4>当前嫌疑榜</h4>
@@ -163,12 +236,18 @@ export function MysteryView({
       )}
 
       {/* 自我介绍 / 讨论 */}
-      {(view.phase === 'introduction' || view.phase === 'discussion') && (
+      {(view.phase === 'introduction' || view.phase === 'discussion' || view.phase === 'accusation') && (
         <div className="action-panel">
-          <h4>{view.phase === 'introduction' ? '请以角色身份做自我介绍' : '圆桌讨论'}</h4>
+          <h4>
+            {view.phase === 'introduction'
+              ? '请以角色身份做自我介绍'
+              : view.phase === 'accusation'
+                ? '公开指控：请给出你最终怀疑的对象和理由'
+                : '圆桌讨论'}
+          </h4>
           {canAct && !iHaveSpoken && (
             <SpeechInput
-              placeholder="以角色口吻发言……"
+              placeholder={view.phase === 'accusation' ? '说出你最终怀疑的对象和理由……' : '以角色口吻发言……'}
               disabled={!canAct}
               onSpeak={(content) => void act('speak', { content })}
               onSkip={() => void act('speak_skip')}
@@ -247,6 +326,9 @@ export function MysteryView({
                     : ''}
                   {entry.playerName}（{entry.characterName}）：
                 </b>
+                <span className={`chip-tag ${entry.type === 'accusation' ? 'danger' : entry.type === 'defense' ? 'active' : 'muted'}`}>
+                  {DISCUSSION_TYPE_LABELS[entry.type] ?? '发言'}
+                </span>
                 <span>{entry.content}</span>
               </div>
             ))}
@@ -256,10 +338,14 @@ export function MysteryView({
 
       <div className="game-section">
         <h4>玩家</h4>
-        <PlayerChips players={view.players} voteStatus={view.phase === 'voting' ? view.voteStatus : undefined} />
+        <PlayerChips
+          players={view.players}
+          voteStatus={view.phase === 'voting' ? view.voteStatus : undefined}
+          focusedPlayerIds={suspectBoard.map((player) => player.playerId)}
+        />
       </div>
 
-      <Timeline events={view.events ?? []} />
+      <Timeline events={view.events ?? []} focusTerms={focusTerms} />
     </div>
   );
 }

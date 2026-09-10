@@ -19,6 +19,7 @@ import {
   generateMysterySpeech,
   decideMysteryVote,
   getPlayerView,
+  summarizeMysteryPublicNote,
 } from './mystery-engine';
 import { generateLlmSpeech } from './speech-generator';
 
@@ -171,6 +172,7 @@ export class MysteryGame extends BaseGameEngine {
     switch (this.state.phase) {
       case 'introduction':
       case 'discussion':
+      case 'accusation':
         return SPEECH_DEADLINE_MS;
       case 'investigation':
         return SEARCH_DEADLINE_MS;
@@ -187,6 +189,7 @@ export class MysteryGame extends BaseGameEngine {
     switch (state.phase) {
       case 'introduction':
       case 'discussion':
+      case 'accusation':
         return alive
           .filter((p) => !this.isAi(p.playerId) && !p.hasSpoken)
           .map((p) => p.playerId);
@@ -247,6 +250,7 @@ export class MysteryGame extends BaseGameEngine {
     switch (state.phase) {
       case 'introduction':
       case 'discussion':
+      case 'accusation':
         if (!me.hasSpoken) this.state = skipDiscussion(state, playerId);
         return;
       case 'investigation':
@@ -293,7 +297,9 @@ export class MysteryGame extends BaseGameEngine {
         if (alive.some((p) => !p.hasSearched)) return false;
         // 重置发言状态，进入讨论
         for (const p of state.players) p.hasSpoken = false;
-        this.transition('discussion', '搜证结束，进入圆桌讨论');
+        const note = summarizeMysteryPublicNote(this.state);
+        if (note) this.state.publicNotes.push({ round: this.state.round, content: note });
+        this.transition('discussion', `搜证结束。请各位围绕案发现场、凶器和彼此证词展开圆桌讨论。`);
         return true;
       }
       case 'discussion': {
@@ -306,7 +312,23 @@ export class MysteryGame extends BaseGameEngine {
           }
         }
         if (alive.some((p) => !p.hasSpoken)) return false;
-        this.transition('voting', '讨论结束，进入最终指认投票');
+        for (const p of state.players) p.hasSpoken = false;
+        const note = summarizeMysteryPublicNote(this.state);
+        if (note) this.state.publicNotes.push({ round: this.state.round, content: `圆桌讨论后的共识：${note}` });
+        this.transition('accusation', '自由讨论结束。现在进入公开指控环节，请每个人给出最终怀疑对象和理由。');
+        return true;
+      }
+      case 'accusation': {
+        for (const p of alive) {
+          if (this.isAi(p.playerId) && !p.hasSpoken) {
+            this.state = addDiscussion(state, p.playerId, generateMysterySpeech(state, p, 'accusation'), 'accusation');
+            return true;
+          }
+        }
+        if (alive.some((p) => !p.hasSpoken)) return false;
+        const note = summarizeMysteryPublicNote(this.state);
+        if (note) this.state.publicNotes.push({ round: this.state.round, content: `进入投票前，场上判断：${note}` });
+        this.transition('voting', '公开指控结束，进入最终指认投票。请慎重投出决定案件走向的一票。');
         return true;
       }
       case 'voting': {

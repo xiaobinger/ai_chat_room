@@ -4,10 +4,13 @@ export type ThiefPhase = 'investigation' | 'voting' | 'result';
 
 export type ThiefRole = 'thief' | 'detective' | 'citizen' | 'master_thief' | 'accomplice' | 'witness';
 
+export type ThiefPersona = '冷静观察型' | '强势带队型' | '圆滑周旋型' | '直觉冲票型';
+
 export interface ThiefPlayerState {
   playerId: string;
   nickname: string;
   role: ThiefRole;
+  persona: ThiefPersona;
   isAlive: boolean;
   /** 本轮是否已发言 */
   hasSpoken: boolean;
@@ -25,6 +28,11 @@ export interface ThiefSpeech {
   round: number;
   playerId: string;
   nickname: string;
+  content: string;
+}
+
+export interface ThiefPublicNote {
+  round: number;
   content: string;
 }
 
@@ -61,6 +69,8 @@ export interface ThiefGameState {
   /** 本局全部线索（未公开前对玩家不可见） */
   clues: string[];
   masterThiefEscapeUsed: boolean;
+  /** 全员可见的局势记忆 */
+  publicNotes: ThiefPublicNote[];
   events: ThiefGameEvent[];
 }
 
@@ -80,6 +90,13 @@ export const THIEF_ROLE_DESCRIPTIONS: Record<ThiefRole, string> = {
   master_thief: '你是神偷！即使被投票出局，也可以使用金蝉脱壳逃脱一次。',
   accomplice: '你是同伙！帮助小偷隐藏身份，你们共同获胜。',
   witness: '你是目击者！你知道一条关于案件的线索。可以公开一条线索帮助市民（整局一次）。',
+};
+
+export const THIEF_PERSONA_DESCRIPTIONS: Record<ThiefPersona, string> = {
+  冷静观察型: '更喜欢先听信息、抓矛盾，再慢慢收紧怀疑范围。',
+  强势带队型: '喜欢快速立焦点、主动带票，推动全场节奏。',
+  圆滑周旋型: '说话留余地，善于顺着别人的观点补刀或打圆场。',
+  直觉冲票型: '更相信第一反应和现场气氛，容易直接点名质疑。',
 };
 
 // 失窃物品池

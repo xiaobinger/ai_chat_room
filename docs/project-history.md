@@ -546,6 +546,146 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 - `pnpm test`：全仓测试通过
 - `pnpm lint`：0 errors，保留既有 `console` warnings
 
+## 2026-09-10：其他游戏体验增强 + AI 拟人化升级
+
+### 关键事件
+- **剧本杀新增公开指控阶段**：流程从“搜证 → 圆桌讨论 → 最终投票”升级为“搜证 → 圆桌讨论 → 公开指控 → 最终投票”，AI 在投票前会给出更像真人桌游的最终怀疑对象与理由，讨论区也开始区分“陈述 / 指控 / 辩解”
+- **谁是卧底描述更像真人**：AI 描述不再主要依赖“我同意前面说的”模板，而是按场景、感觉、颜色、类别、用途、排除等角度轮换表达；进入下一轮时会明确提示“换个角度描述”
+- **谁是小偷中场总结更有戏**：调查阶段转投票、下一轮调查开始时，系统会总结已公开线索和当前焦点人物；目击者公开线索与平民投票也开始参考场上僵局、公开发言与怀疑集中度
+
+## 2026-09-10：其他游戏人格系统 + 公共记忆层收口
+
+### 关键事件
+- **谁是小偷人格落地**：为小偷局玩家加入 `冷静观察型 / 强势带队型 / 圆滑周旋型 / 直觉冲票型`，AI 发言和投票不再只靠嫌疑值，而是开始体现稳定站边与带票风格
+- **谁是卧底人格落地**：为卧底局玩家加入 `谨慎试探型 / 联想发散型 / 稳健跟随型 / 大胆误导型`，AI 描述会按人格改变开场语气与激进程度，卧底不再像统一模板输出
+- **三游戏公共记忆统一**：剧本杀、谁是小偷、谁是卧底统一引入 `publicNotes`，在阶段切换时沉淀“当前焦点、共识和提醒”，既能让 AI 继续引用，也能直接给前端展示
+- **前端体验补齐**：`MysteryView`、`ThiefGameView`、`UndercoverView` 新增人格 / 角色气质 / 场上共识展示，玩家终于能直接看到 AI 的风格线索和局势总结，而不是只看零散发言
+
+### 技术细节
+- 后端文件：`apps/ai-worker/src/game/mystery-engine.ts`、`apps/ai-worker/src/game/mystery-game.ts`、`apps/ai-worker/src/game/who-is-the-thief-engine.ts`、`apps/ai-worker/src/game/who-is-undercover-engine.ts`
+- 类型文件：`apps/ai-worker/src/game/mystery-types.ts`、`apps/ai-worker/src/game/who-is-the-thief-types.ts`、`apps/ai-worker/src/game/who-is-undercover-types.ts`
+- 前端文件：`apps/web/src/components/MysteryView.tsx`、`apps/web/src/components/ThiefGameView.tsx`、`apps/web/src/components/UndercoverView.tsx`、`apps/web/src/components/game-parts.tsx`
+- 测试文件：`apps/ai-worker/src/__tests__/games.test.ts` 新增人格与公共记忆视角断言
+
+### 验证
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：全仓测试通过
+- `pnpm lint`：0 errors，保留既有 `console` warnings
+
+## 2026-09-10：人格进入决策层（第二轮深化）
+
+### 关键事件
+- **谁是小偷不再只是“会说话”**：新增公开焦点、线索压力和场上总结驱动的评分，`冷静观察型 / 强势带队型 / 圆滑周旋型 / 直觉冲票型` 已开始真正影响带票与投票选择
+- **谁是卧底票型差异拉开**：`谨慎试探型` 会在信号不足时保留，`联想发散型` 更容易追离群描述，`稳健跟随型` 更贴近场上共识，`大胆误导型` 会主动制造偏票
+- **剧本杀角色性格开始参与推理**：直接读取角色卡里的 `character.personality`，把“谨慎 / 暴躁 / 敏锐 / 温和”等气质用于嫌疑排序、发言前缀和投票决策，让不同角色更像不同的人
+
+### 技术细节
+- 后端文件：`apps/ai-worker/src/game/who-is-the-thief-engine.ts`、`apps/ai-worker/src/game/who-is-undercover-engine.ts`、`apps/ai-worker/src/game/mystery-engine.ts`
+- 测试文件：`apps/ai-worker/src/__tests__/games.test.ts` 新增人格深入决策层断言，覆盖小偷局跟焦点、卧底局谨慎保留、剧本杀性格偏向线索指向等场景
+
+### 验证
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：全仓测试通过
+- `pnpm lint`：0 errors，保留既有 `console` warnings
+
+## 2026-09-10：游戏房间接入阶段化氛围背景音乐
+
+### 关键事件
+- **无素材依赖的 BGM 方案落地**：新增 `apps/web/src/hooks/useAdaptiveGameBgm.ts`，使用 `Web Audio API` 合成环境长音、脉冲节拍和高频点缀，避免后续被音频素材管理与打包路径卡住
+- **按游戏与阶段精准切歌**：狼人杀按夜晚 / 白天 / 投票切不同压迫感；剧本杀按介绍 / 搜证 / 讨论 / 指控切不同悬疑层次；谁是小偷和谁是卧底也分别补上更贴题的潜行感与试探感
+- **GameRoom 增加音乐控制条**：在 `apps/web/src/pages/GameRoom.tsx` 增加可见的曲风标签、描述、开关、音量滑杆和“点我唤醒音乐”按钮，让浏览器自动播放限制也有明确交互出口
+
+### 技术细节
+- 接入文件：`apps/web/src/hooks/useAdaptiveGameBgm.ts`、`apps/web/src/pages/GameRoom.tsx`、`apps/web/src/styles/app.css`
+- 状态持久化：音乐开关与音量使用本地存储保存，用户切换房间后仍能沿用上一次偏好
+- 音乐恢复策略：页面首次交互时自动尝试恢复 `AudioContext`，标签切走时暂停，回到页面后按当前阶段重新恢复
+
+### 验证
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：全仓测试通过
+- `pnpm lint`：0 errors，保留既有 `console` warnings
+
+## 2026-09-10：主持总结演出层补强
+
+### 关键事件
+- **统一主持总结卡落地**：在 `apps/web/src/components/game-parts.tsx` 新增 `HostSummaryCard`，把“主持人正在播报什么、这轮焦点是谁、现在该紧张什么”做成统一演出组件
+- **三款轻推理局全部接入**：`ThiefGameView`、`UndercoverView`、`MysteryView` 已把 `publicNotes` 最新一条提升为主卡展示，并只保留最近 3 条场上共识，避免信息墙过长
+- **焦点信息更可视化**：最近一条共识会高亮显示，相关人物会被提炼成标签，配合前一轮的背景音乐后，阶段感和桌游主持感明显更强
+
+### 技术细节
+- 组件文件：`apps/web/src/components/game-parts.tsx`
+- 视图文件：`apps/web/src/components/ThiefGameView.tsx`、`apps/web/src/components/UndercoverView.tsx`、`apps/web/src/components/MysteryView.tsx`
+- 样式文件：`apps/web/src/styles/app.css`
+
+### 验证
+- `pnpm typecheck`：7 包零错误
+- `pnpm lint`：0 errors，保留既有 `console` warnings
+- `pnpm test`：全量回归时仍偶发命中剧本杀既有随机阶段测试；`pnpm --filter @tianma/ai-worker test` 单独复跑通过，说明本轮未引入新的展示层回归
+
+## 2026-09-10：沉浸强化线第一轮落地
+
+### 关键事件
+- **阶段切换有了转场播报**：新增 `PhaseSpotlight`，四个游戏在阶段或轮次推进时会短暂弹出“当前进入什么阶段、此刻该关注什么”的播报卡
+- **投票操作不再“没手感”**：`VoteGrid` 增加本地锁票反馈，点击后会立刻显示“锁票中 / 已锁定”，同时请求失败会自动回退，减少误以为没点上的感觉
+- **结算更像结算**：`WinnerBanner`、转场卡和锁票按钮补上揭示与锁定动画，让关键时刻更有桌游主持感和演出感
+
+### 技术细节
+- 组件文件：`apps/web/src/components/game-parts.tsx`
+- 视图文件：`apps/web/src/components/WerewolfView.tsx`、`apps/web/src/components/ThiefGameView.tsx`、`apps/web/src/components/UndercoverView.tsx`、`apps/web/src/components/MysteryView.tsx`
+- 样式文件：`apps/web/src/styles/app.css`
+
+### 验证
+- `pnpm typecheck`：7 包零错误
+- `pnpm lint`：0 errors，保留既有 `console` warnings
+- `pnpm test`：全量回归仍偶发命中剧本杀既有随机测试；`pnpm --filter @tianma/ai-worker test` 单独复跑通过，本轮前端沉浸层未发现新增逻辑回归
+
+## 2026-09-10：沉浸强化线第二轮落地
+
+### 关键事件
+- **关键节点有了独立揭示卡**：新增 `RevealBanner`，把“昨夜死亡”“白天放逐”“重大结果”从普通信息块提升为高优先级揭示区域
+- **时间线不再只是日志**：`Timeline` 现在会把最近一次关键事件提到顶部单独高亮，玩家不用自己扫完整时间线也能第一眼抓住重点
+- **狼人杀死亡信息更有叙事感**：夜晚结束后的死亡名单、白天放逐结果和临终遗言阶段形成连续展示，关键时刻的压迫感与仪式感更强
+
+### 技术细节
+- 组件文件：`apps/web/src/components/game-parts.tsx`
+- 视图文件：`apps/web/src/components/WerewolfView.tsx`
+- 样式文件：`apps/web/src/styles/app.css`
+
+### 验证
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：全仓测试通过
+- `pnpm lint`：0 errors，保留既有 `console` warnings
+
+## 2026-09-10：沉浸强化线第三轮落地
+
+### 关键事件
+- **整屏遮罩转场落地**：新增 `StageVeil`，阶段推进时会出现短暂整屏切场遮罩，终于不再只是“上方 badge 换了个词”
+- **焦点信息开始联动**：主持总结里点到的玩家、嫌疑榜上的重点对象，会同步高亮到玩家卡片和时间线事件，信息不再分散在不同区块各说各话
+- **结果开始分步揭晓**：新增 `ResultRevealCard`，先用于卧底局词底翻牌，结算时的揭示更像“逐步翻开答案”而不是一次性全部扔出来
+
+### 技术细节
+- 组件文件：`apps/web/src/components/game-parts.tsx`
+- 视图文件：`apps/web/src/components/WerewolfView.tsx`、`apps/web/src/components/ThiefGameView.tsx`、`apps/web/src/components/UndercoverView.tsx`、`apps/web/src/components/MysteryView.tsx`
+- 样式文件：`apps/web/src/styles/app.css`
+
+### 验证
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：全仓测试通过
+- `pnpm lint`：0 errors，保留既有 `console` warnings
+
+### 技术细节
+- 后端文件：`apps/ai-worker/src/game/mystery-game.ts`、`apps/ai-worker/src/game/mystery-engine.ts`、`apps/ai-worker/src/game/who-is-undercover-engine.ts`、`apps/ai-worker/src/game/who-is-the-thief-engine.ts`
+- 前端文件：`apps/web/src/components/MysteryView.tsx`、`apps/web/src/components/ThiefGameView.tsx`、`apps/web/src/components/UndercoverView.tsx`
+- 测试文件：`apps/ai-worker/src/__tests__/games.test.ts` 已同步剧本杀阶段循环断言，覆盖新增 `accusation` 阶段
+
+### 验证
+- `pnpm --filter @tianma/ai-worker test -- src/__tests__/games.test.ts`：31 测试全绿
+- `pnpm --filter @tianma/ai-worker typecheck`：通过
+- `pnpm --filter @tianma/web typecheck`：通过
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：全仓测试通过
+- `pnpm lint`：0 errors，保留既有 `console` warnings
+
 ## 经验教训
 1. Windows 环境下工作区路径处理需要特别小心，`\\?\` 前缀会导致 CMD 和部分 Node 工具异常
 2. 后台进程管理在受限沙箱中不可靠，优先让用户本地终端常驻服务

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Crown, MessageSquareQuote, Moon, Skull, Sun, Timer, Vote as VoteIcon, Users } from 'lucide-react';
+import { Crown, MessageSquareQuote, Moon, Skull, Sparkles, Sun, Timer, Vote as VoteIcon, Users } from 'lucide-react';
 
 // ===== 通用视角类型（各游戏字段按需取用） =====
 
@@ -8,6 +8,7 @@ export interface GamePlayerView {
   nickname: string;
   seatNumber?: number;
   isAlive: boolean;
+  persona?: string;
   role?: string;
   roleLabel?: string;
   isMe?: boolean;
@@ -117,13 +118,164 @@ export function RoleCard({ title, roleName, description, accent }: { title: stri
   );
 }
 
+export function HostSummaryCard({
+  title,
+  label,
+  summary,
+  highlights,
+  tone = 'neutral',
+}: {
+  title: string;
+  label?: string;
+  summary: string;
+  highlights?: string[];
+  tone?: 'neutral' | 'warn' | 'danger';
+}) {
+  return (
+    <div className={`host-summary-card ${tone}`}>
+      <div className="host-summary-head">
+        <span className="host-summary-kicker">
+          <Sparkles size={14} />
+          主持总结
+        </span>
+        {label && <span className="host-summary-label">{label}</span>}
+      </div>
+      <h4>{title}</h4>
+      <p>{summary}</p>
+      {(highlights ?? []).length > 0 && (
+        <div className="host-summary-tags">
+          {(highlights ?? []).map((item, index) => (
+            <span key={`${item}-${index}`}>{item}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function PhaseSpotlight({
+  phaseKey,
+  title,
+  subtitle,
+  tone = 'neutral',
+}: {
+  phaseKey: string;
+  title: string;
+  subtitle?: string;
+  tone?: 'neutral' | 'warn' | 'danger';
+}) {
+  const [visible, setVisible] = useState(true);
+  const firstKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const isFirst = firstKeyRef.current === null;
+    firstKeyRef.current = phaseKey;
+    setVisible(true);
+    const timer = window.setTimeout(() => setVisible(false), isFirst ? 2000 : 1700);
+    return () => window.clearTimeout(timer);
+  }, [phaseKey]);
+
+  if (!visible) return null;
+
+  return (
+    <div className={`phase-spotlight ${tone}`}>
+      <span className="phase-spotlight-kicker">阶段切换</span>
+      <b>{title}</b>
+      {subtitle && <p>{subtitle}</p>}
+    </div>
+  );
+}
+
+export function StageVeil({
+  stageKey,
+  title,
+  subtitle,
+  tone = 'neutral',
+}: {
+  stageKey: string;
+  title: string;
+  subtitle?: string;
+  tone?: 'neutral' | 'warn' | 'danger';
+}) {
+  const [visible, setVisible] = useState(true);
+  const firstKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const isFirst = firstKeyRef.current === null;
+    firstKeyRef.current = stageKey;
+    setVisible(true);
+    const timer = window.setTimeout(() => setVisible(false), isFirst ? 950 : 820);
+    return () => window.clearTimeout(timer);
+  }, [stageKey]);
+
+  if (!visible) return null;
+
+  return (
+    <div className={`stage-veil ${tone}`} aria-hidden="true">
+      <div className="stage-veil-copy">
+        <small>转场</small>
+        <b>{title}</b>
+        {subtitle && <p>{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+
 // ===== 胜负横幅 =====
 
 export function WinnerBanner({ text, tone }: { text: string; tone: 'good' | 'bad' | 'neutral' }) {
   return (
-    <div className={`winner-banner ${tone}`}>
+    <div className={`winner-banner ${tone} reveal`}>
       <Crown size={20} />
       <b>{text}</b>
+    </div>
+  );
+}
+
+export function RevealBanner({
+  title,
+  subtitle,
+  items,
+  tone = 'neutral',
+}: {
+  title: string;
+  subtitle?: string;
+  items?: string[];
+  tone?: 'neutral' | 'warn' | 'danger';
+}) {
+  return (
+    <div className={`reveal-banner ${tone}`}>
+      <div className="reveal-banner-copy">
+        <small>关键揭示</small>
+        <b>{title}</b>
+        {subtitle && <p>{subtitle}</p>}
+      </div>
+      {(items ?? []).length > 0 && (
+        <div className="reveal-banner-tags">
+          {(items ?? []).map((item, index) => (
+            <span key={`${item}-${index}`}>{item}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ResultRevealCard({
+  eyebrow,
+  title,
+  tone = 'neutral',
+  delayMs = 0,
+}: {
+  eyebrow: string;
+  title: string;
+  tone?: 'neutral' | 'good' | 'bad' | 'warn';
+  delayMs?: number;
+}) {
+  return (
+    <div className={`result-reveal-card ${tone}`} style={{ animationDelay: `${delayMs}ms` }}>
+      <small>{eyebrow}</small>
+      <b>{title}</b>
     </div>
   );
 }
@@ -136,12 +288,14 @@ export function PlayerChips({
   speechStatus,
   currentSpeakerId,
   showRoles,
+  focusedPlayerIds,
 }: {
   players: GamePlayerView[];
   voteStatus?: Record<string, string>;
   speechStatus?: Record<string, string>;
   currentSpeakerId?: string | null;
   showRoles?: boolean;
+  focusedPlayerIds?: string[];
 }) {
   const roleLabels: Record<string, string> = {
     werewolf: '狼人',
@@ -164,7 +318,7 @@ export function PlayerChips({
       {players.map((p) => (
         <div
           key={p.playerId}
-          className={`player-chip ${!p.isAlive ? 'dead' : ''} ${currentSpeakerId === p.playerId ? 'speaking' : ''} ${p.isMe ? 'me' : ''}`}
+          className={`player-chip ${!p.isAlive ? 'dead' : ''} ${currentSpeakerId === p.playerId ? 'speaking' : ''} ${p.isMe ? 'me' : ''} ${focusedPlayerIds?.includes(p.playerId) ? 'focus' : ''}`}
         >
           <span className="player-avatar">{p.nickname.slice(0, 1)}</span>
           {p.seatNumber && <span className="chip-tag">{p.seatNumber}号</span>}
@@ -203,21 +357,32 @@ const EVENT_COLORS: Record<string, string> = {
   roleplay: '#8ec9ff',
 };
 
-export function Timeline({ events }: { events: GameEventView[] }) {
+export function Timeline({ events, focusTerms }: { events: GameEventView[]; focusTerms?: string[] }) {
   const recent = [...(events ?? [])].reverse().slice(0, 40);
+  const keyMoment = recent.find((event) => ['player_death', 'player_eliminated', 'vote_result', 'game_end', 'special_event'].includes(event.type));
   return (
     <div className="game-timeline">
       <h4>游戏进程</h4>
-      {recent.length === 0 && <p className="hint">游戏即将开始...</p>}
-      {recent.map((event) => (
-        <div key={event.id} className="timeline-item">
-          <span className="timeline-dot" style={{ background: EVENT_COLORS[event.type] ?? '#8e90a0' }} />
-          <div className="timeline-content">
-            <p>{event.content}</p>
-            <small>第 {event.round} 轮</small>
-          </div>
+      {keyMoment && (
+        <div className={`timeline-flash ${keyMoment.type}`}>
+          <small>最近关键节点</small>
+          <b>{keyMoment.content}</b>
+          <span>第 {keyMoment.round} 轮</span>
         </div>
-      ))}
+      )}
+      {recent.length === 0 && <p className="hint">游戏即将开始...</p>}
+      {recent.map((event) => {
+        const focused = (focusTerms ?? []).some((term) => term && event.content.includes(term));
+        return (
+          <div key={event.id} className={`timeline-item ${event.type} ${focused ? 'focused' : ''}`}>
+            <span className="timeline-dot" style={{ background: EVENT_COLORS[event.type] ?? '#8e90a0' }} />
+            <div className="timeline-content">
+              <p>{event.content}</p>
+              <small>第 {event.round} 轮</small>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -288,33 +453,65 @@ export function VoteGrid({
   players: GamePlayerView[];
   myPlayerId: string | null;
   disabled: boolean;
-  onVote: (targetId: string) => void;
-  onAbstain?: () => void;
+  onVote: (targetId: string) => void | Promise<void>;
+  onAbstain?: () => void | Promise<void>;
 }) {
   const targets = players.filter((p) => p.isAlive && p.playerId !== myPlayerId);
+  const [lockedTargetId, setLockedTargetId] = useState<string | null>(null);
+  const [lockedAbstain, setLockedAbstain] = useState(false);
+
+  useEffect(() => {
+    if (!disabled) {
+      setLockedTargetId(null);
+      setLockedAbstain(false);
+    }
+  }, [disabled, players.length]);
+
   return (
     <div className="vote-section">
       <h4>
         <VoteIcon size={15} />
         投票
+        {(lockedTargetId || lockedAbstain) && <span className="chip-tag active">已锁定</span>}
       </h4>
       <div className="vote-options">
         {targets.map((p) => (
           <button
             key={p.playerId}
-            className="vote-btn"
-            disabled={disabled}
-            onClick={() => onVote(p.playerId)}
+            className={`vote-btn ${lockedTargetId === p.playerId ? 'locked' : ''}`}
+            disabled={disabled || Boolean(lockedTargetId) || lockedAbstain}
+            onClick={async () => {
+              setLockedTargetId(p.playerId);
+              setLockedAbstain(false);
+              try {
+                await Promise.resolve(onVote(p.playerId));
+              } catch {
+                setLockedTargetId(null);
+              }
+            }}
           >
             <span className="player-avatar small">{p.nickname.slice(0, 1)}</span>
             {p.seatNumber ? `${p.seatNumber}号 ` : ''}
             {p.nickname}
+            {lockedTargetId === p.playerId && <span className="chip-tag active">锁票中</span>}
           </button>
         ))}
       </div>
       {onAbstain && (
-        <button className="action-btn ghost" disabled={disabled} onClick={onAbstain}>
-          弃票
+        <button
+          className={`action-btn ghost ${lockedAbstain ? 'locked' : ''}`}
+          disabled={disabled || Boolean(lockedTargetId) || lockedAbstain}
+          onClick={async () => {
+            setLockedTargetId(null);
+            setLockedAbstain(true);
+            try {
+              await Promise.resolve(onAbstain());
+            } catch {
+              setLockedAbstain(false);
+            }
+          }}
+        >
+          {lockedAbstain ? '弃票已锁定' : '弃票'}
         </button>
       )}
     </div>

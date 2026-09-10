@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Bot, Play, Plus, RotateCcw, Trash2, UserMinus, UserPlus, Wifi, WifiOff } from 'lucide-react';
+import { ArrowLeft, Bot, Play, Plus, RotateCcw, Trash2, UserMinus, UserPlus, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useGameRoomSocket } from '../hooks/useGameRoomSocket';
+import { useAdaptiveGameBgm } from '../hooks/useAdaptiveGameBgm';
 import { Shell, Top, Notice } from '../components/Shell';
 import { WerewolfView } from '../components/WerewolfView';
 import { ThiefGameView } from '../components/ThiefGameView';
@@ -111,6 +112,11 @@ export default function GameRoom() {
   const playing = room?.gameStatus === 'playing';
   const finished = room?.gameStatus === 'finished';
   const canStart = room?.gameStatus === 'waiting' || room?.gameStatus === 'ready';
+  const bgm = useAdaptiveGameBgm({
+    gameType: room?.gameType,
+    phase: state?.view?.phase ?? null,
+    gameStatus: room?.gameStatus,
+  });
 
   const run = async (fn: () => Promise<unknown>, failText: string) => {
     setBusy(true);
@@ -165,6 +171,12 @@ export default function GameRoom() {
         sub={`${gameLabel} · ${STATUS_LABELS[room.gameStatus] ?? room.gameStatus}`}
         action={
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {bgm.supported && (
+              <button className={`secondary bgm-toggle ${bgm.enabled ? 'on' : 'off'}`} onClick={() => void bgm.toggleEnabled()}>
+                {bgm.enabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+                {bgm.enabled ? '氛围音乐已开' : '开启氛围音乐'}
+              </button>
+            )}
             {playing && (connected ? <Wifi size={16} className="conn-ok" /> : <WifiOff size={16} className="conn-bad" />)}
             <Link to="/entertainment" className="secondary">
               <ArrowLeft />
@@ -180,6 +192,38 @@ export default function GameRoom() {
       />
       <div className="content">
         {problem && <Notice kind="error">{problem}</Notice>}
+        {bgm.supported && (
+          <div className="bgm-panel">
+            <div className="bgm-copy">
+              <small>氛围背景音乐</small>
+              <b>{bgm.profile.label}</b>
+              <p>{bgm.profile.description}</p>
+            </div>
+            <div className="bgm-controls">
+              <button className={`secondary bgm-pill ${bgm.enabled ? 'on' : 'off'}`} onClick={() => void bgm.toggleEnabled()}>
+                {bgm.enabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+                {bgm.enabled ? '已启用' : '已静音'}
+              </button>
+              <label className="bgm-slider">
+                <span>音量 {bgm.volume}%</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={bgm.volume}
+                  onChange={(event) => bgm.setVolume(Number(event.target.value))}
+                  disabled={!bgm.enabled}
+                />
+              </label>
+              {bgm.enabled && !bgm.unlocked && (
+                <button className="secondary bgm-pill" onClick={() => void bgm.resume()}>
+                  点我唤醒音乐
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ===== 等待阶段 ===== */}
         {(canStart || (!playing && !finished)) && (

@@ -2,10 +2,13 @@ import { Crosshair, Eye, FlaskConical, Gavel, Moon, PawPrint, Shield, MessageSqu
 import {
   Countdown,
   PhaseBadge,
+  PhaseSpotlight,
   PlayerChips,
   PlayerCount,
+  RevealBanner,
   RoleCard,
   SpeechInput,
+  StageVeil,
   Timeline,
   VoteGrid,
   WinnerBanner,
@@ -29,6 +32,14 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
   seer: '每晚查验一名玩家的阵营。',
   witch: '解药与毒药整局各一次；解药救当晚被刀的人，毒药毒死一名玩家。',
   hunter: '被放逐或被刀死时可开枪带走一人（被毒死不能开枪）。',
+};
+
+const WEREWOLF_PHASE_COPY: Record<string, { title: string; subtitle: string; tone: 'neutral' | 'warn' | 'danger' }> = {
+  night: { title: '夜幕降临', subtitle: '隐藏身份开始行动，局势会在黑暗里悄悄改写。', tone: 'danger' },
+  day: { title: '白昼发言', subtitle: '公开信息重新洗牌，所有人都在试着定义今天的焦点。', tone: 'neutral' },
+  vote: { title: '放逐投票', subtitle: '票型正在收紧，站错边的人会被迅速放大。', tone: 'warn' },
+  final_speech: { title: '临终遗言', subtitle: '最后一句话往往最能改变风向。', tone: 'warn' },
+  finished: { title: '胜负揭晓', subtitle: '阵营身份全部翻开，准备进入复盘。', tone: 'danger' },
 };
 
 interface WerewolfViewState extends GameViewState {
@@ -85,19 +96,62 @@ export function WerewolfView({
   const alivePlayers = view.players.filter((p) => p.isAlive);
   const me = view.players.find((p) => p.playerId === myPlayerId);
   const canAct = alive && !finished && !isJudge;
+  const deadTonightNames = (view.deadTonight ?? [])
+    .map((id) => view.players.find((player) => player.playerId === id))
+    .filter((player): player is GamePlayerView => Boolean(player))
+    .map((player) => `${player.seatNumber ? `${player.seatNumber}号` : ''}${player.nickname}`);
+  const deadTodayNames = (view.deadToday ?? [])
+    .map((id) => view.players.find((player) => player.playerId === id))
+    .filter((player): player is GamePlayerView => Boolean(player))
+    .map((player) => `${player.seatNumber ? `${player.seatNumber}号` : ''}${player.nickname}`);
+  const focusPlayerIds = [...(view.deadTonight ?? []), ...(view.deadToday ?? [])];
+  const focusTerms = focusPlayerIds
+    .map((id) => view.players.find((player) => player.playerId === id)?.nickname)
+    .filter((name): name is string => Boolean(name));
 
   return (
     <div className="game-view werewolf">
+      <StageVeil
+        stageKey={`${view.round}-${view.phase}`}
+        title={WEREWOLF_PHASE_COPY[view.phase]?.title ?? '阶段推进'}
+        subtitle={WEREWOLF_PHASE_COPY[view.phase]?.subtitle}
+        tone={WEREWOLF_PHASE_COPY[view.phase]?.tone ?? 'neutral'}
+      />
       <div className="game-toolbar">
         <PhaseBadge phase={view.phase} round={view.round} />
         <PlayerCount players={view.players} />
         <Countdown deadline={finished ? null : deadline} onExpire={refresh} />
       </div>
 
+      <PhaseSpotlight
+        phaseKey={`${view.round}-${view.phase}`}
+        title={WEREWOLF_PHASE_COPY[view.phase]?.title ?? '阶段推进'}
+        subtitle={WEREWOLF_PHASE_COPY[view.phase]?.subtitle ?? '局势正在推进，注意观察发言与票型变化。'}
+        tone={WEREWOLF_PHASE_COPY[view.phase]?.tone ?? 'neutral'}
+      />
+
       {finished && view.winner && (
         <WinnerBanner
           text={view.winner === 'werewolf' ? '狼人阵营获胜！' : '好人阵营获胜！'}
           tone={view.winner === 'werewolf' ? 'bad' : 'good'}
+        />
+      )}
+
+      {!finished && view.phase !== 'night' && deadTonightNames.length > 0 && (
+        <RevealBanner
+          title="昨夜死亡揭示"
+          subtitle="天亮之后，所有人都会围绕这些死亡信息重新判断局势。"
+          items={deadTonightNames}
+          tone="danger"
+        />
+      )}
+
+      {!finished && (view.phase === 'vote' || view.phase === 'final_speech') && deadTodayNames.length > 0 && (
+        <RevealBanner
+          title="白天放逐结果"
+          subtitle="票型已经给出答案，接下来场上发言会围绕这次出局继续发酵。"
+          items={deadTodayNames}
+          tone="warn"
         />
       )}
 
@@ -435,11 +489,12 @@ export function WerewolfView({
           players={view.players}
           speechStatus={view.phase === 'day' ? view.speechStatus : undefined}
           voteStatus={view.phase === 'vote' ? view.voteStatus : undefined}
+          focusedPlayerIds={focusPlayerIds}
           showRoles={finished || isJudge}
         />
       </div>
 
-      <Timeline events={view.events ?? []} />
+      <Timeline events={view.events ?? []} focusTerms={focusTerms} />
     </div>
   );
 }

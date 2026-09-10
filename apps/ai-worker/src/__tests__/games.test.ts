@@ -6,6 +6,9 @@ import { WerewolfGame } from '../game/werewolf-game';
 import { ThiefGame } from '../game/thief-game';
 import { MysteryGame } from '../game/mystery-game';
 import { aiJudgeBroadcast } from '../game/werewolf-engine';
+import { decideUndercoverVote } from '../game/who-is-undercover-engine';
+import { decideThiefVote } from '../game/who-is-the-thief-engine';
+import { decideMysteryVote } from '../game/mystery-engine';
 import type { GameState } from '../game/types';
 import type { GamePlayerInfo } from '../game/errors';
 
@@ -115,6 +118,33 @@ describe('谁是卧底', () => {
     const view = game.getView(state.players[0].playerId) as { players: { seatNumber?: number }[] };
 
     expect(view.players.map((player) => player.seatNumber)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('玩家视角暴露自己的描述人格和公共局势记忆，但不暴露他人人格', () => {
+    const game = new UndercoverGame(aiPlayers(5));
+    const state = game.getState() as { players: { playerId: string }[] };
+    const me = state.players[0];
+    const view = game.getView(me.playerId) as {
+      myPersona?: string;
+      publicNotes?: { round: number; content: string }[];
+      players: { isMe?: boolean; persona?: string }[];
+    };
+
+    expect(view.myPersona).toBeTruthy();
+    expect((view.publicNotes ?? []).length).toBeGreaterThan(0);
+    expect(view.players.find((player) => player.isMe)?.persona).toBe(view.myPersona);
+    expect(view.players.filter((player) => !player.isMe && player.persona).length).toBe(0);
+  });
+
+  it('谨慎试探型平民在信号不足时会保留投票', () => {
+    const game = new UndercoverGame(aiPlayers(5));
+    const state = game.getState() as {
+      players: { playerId: string; role: string; persona: string }[];
+    };
+    const civilian = state.players.find((player) => player.role === 'civilian')!;
+    civilian.persona = '谨慎试探型';
+
+    expect(decideUndercoverVote(state as never, civilian as never)).toEqual({ targetId: null });
   });
 });
 
@@ -493,6 +523,46 @@ describe('谁是小偷', () => {
 
     expect(view.players.map((player) => player.seatNumber)).toEqual([1, 2, 3, 4, 5]);
   });
+
+  it('玩家视角包含自己的发言人格和公开局势记忆', () => {
+    const game = new ThiefGame(aiPlayers(5));
+    const state = game.getState() as { players: { playerId: string }[] };
+    const me = state.players[0];
+    const view = game.getView(me.playerId) as {
+      myPersona?: string;
+      publicNotes?: { round: number; content: string }[];
+      players: { isMe?: boolean; persona?: string }[];
+    };
+
+    expect(view.myPersona).toBeTruthy();
+    expect((view.publicNotes ?? []).length).toBeGreaterThan(0);
+    expect(view.players.find((player) => player.isMe)?.persona).toBe(view.myPersona);
+    expect(view.players.filter((player) => !player.isMe && player.persona).length).toBe(0);
+  });
+
+  it('直觉冲票型市民会优先追随最近形成的发言焦点', () => {
+    const game = new ThiefGame(aiPlayers(5));
+    const state = game.getState() as {
+      round: number;
+      thiefTeamIds: string[];
+      players: { playerId: string; nickname: string; role: string; persona: string; suspicion: number; isAlive: boolean }[];
+      speechLog: { round: number; playerId: string; nickname: string; content: string }[];
+    };
+    const voter = state.players.find((player) => player.role === 'citizen')!;
+    voter.persona = '直觉冲票型';
+    const target = state.players.find(
+      (player) => player.playerId !== voter.playerId && !state.thiefTeamIds.includes(player.playerId),
+    )!;
+    const speaker = state.players.find((player) => player.playerId !== voter.playerId && player.playerId !== target.playerId)!;
+    state.speechLog.push({
+      round: state.round,
+      playerId: speaker.playerId,
+      nickname: speaker.nickname,
+      content: `${target.nickname} 刚才一直在回避问题，我就盯 ${target.nickname}。`,
+    });
+
+    expect(decideThiefVote(state as never, voter as never).targetId).toBe(target.playerId);
+  });
 });
 
 describe('剧本杀', () => {
@@ -510,12 +580,12 @@ describe('剧本杀', () => {
     // 循环在进入 reveal 时退出，补记终态
     expect((game.getState() as { phase: string }).phase).toBe('reveal');
     expect(phases[0]).toBe('introduction');
-    // 至少一轮 investigation → discussion → voting，首轮投对凶手则仅 4 个阶段，否则循环多轮
-    expect(phases.length).toBeGreaterThanOrEqual(4);
-    // introduction 之后的阶段必须严格按 investigation → discussion → voting 循环
-    const cycle = ['investigation', 'discussion', 'voting'];
+    // 至少一轮 investigation → discussion → accusation → voting，首轮投对凶手则仅 5 个阶段，否则循环多轮
+    expect(phases.length).toBeGreaterThanOrEqual(5);
+    // introduction 之后的阶段必须严格按 investigation → discussion → accusation → voting 循环
+    const cycle = ['investigation', 'discussion', 'accusation', 'voting'];
     phases.slice(1).forEach((phase, i) => {
-      expect(phase).toBe(cycle[i % 3]);
+      expect(phase).toBe(cycle[i % cycle.length]);
     });
     const state = game.getState() as { winner: string };
     expect(['murderer', 'detectives']).toContain(state.winner);
@@ -546,6 +616,47 @@ describe('剧本杀', () => {
     expect(view.scenarioTitle).toBe(state.scenarioTitle);
     expect(view.players.map((player) => player.seatNumber)).toEqual([1, 2, 3, 4, 5]);
     expect(view.players.every((player) => typeof player.suspicionLevel === 'number')).toBe(true);
+  });
+
+  it('玩家视角包含角色性格和案件公共记忆，便于沉浸式推理', () => {
+    const game = new MysteryGame(aiPlayers(5));
+    const state = game.getState() as { players: { playerId: string }[] };
+    const view = game.getView(state.players[0].playerId) as {
+      myCharacter?: { personality?: string };
+      publicNotes?: { round: number; content: string }[];
+    };
+
+    expect(view.myCharacter?.personality).toBeTruthy();
+    expect((view.publicNotes ?? []).length).toBeGreaterThan(0);
+  });
+
+  it('分析型角色会更重视线索指向而不是单纯跟风票型', () => {
+    const game = new MysteryGame(aiPlayers(5));
+    const state = game.getState() as {
+      players: {
+        playerId: string;
+        nickname: string;
+        suspicionLevel: number;
+        character: { name: string; personality: string; isMurderer: boolean; isPolice?: boolean; relationshipToVictim: string };
+      }[];
+      discoveredClues: string[];
+      clues: { id: string; name: string; description: string; revealsInfo: string; location: string; isKey: boolean }[];
+    };
+    const voter = state.players.find((player) => !player.character.isMurderer)!;
+    voter.character.personality = '冷静、细致、观察力敏锐';
+    const clueTarget = state.players.find(
+      (player) => player.playerId !== voter.playerId && !player.character.isMurderer,
+    )!;
+    const crowdTarget = state.players.find(
+      (player) => player.playerId !== voter.playerId && player.playerId !== clueTarget.playerId,
+    )!;
+    crowdTarget.suspicionLevel = 3;
+    state.clues[0].name = `${clueTarget.character.name} 的可疑物证`;
+    state.clues[0].description = `${clueTarget.character.name} 在现场留下了明显痕迹。`;
+    state.clues[0].revealsInfo = `${clueTarget.character.name} 与死者的${clueTarget.character.relationshipToVictim}矛盾被直接指向。`;
+    state.discoveredClues = [state.clues[0].id];
+
+    expect(decideMysteryVote(state as never, voter as never).targetId).toBe(clueTarget.playerId);
   });
 });
 

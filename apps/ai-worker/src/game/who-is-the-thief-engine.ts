@@ -3,6 +3,7 @@ import type {
   ThiefPlayerState,
   ThiefRole,
   ThiefGameEvent,
+  ThiefPersona,
 } from './who-is-the-thief-types';
 import { STOLEN_ITEMS, CRIME_SCENES, CLUES, SPECIAL_EVENTS } from './who-is-the-thief-types';
 import { GameError } from './errors';
@@ -22,6 +23,71 @@ function shuffle<T>(list: T[]): T[] {
 function getSeatNumber(state: ThiefGameState, playerId: string): number | null {
   const index = state.players.findIndex((player) => player.playerId === playerId);
   return index >= 0 ? index + 1 : null;
+}
+
+function mentionCount(state: ThiefGameState, player: ThiefPlayerState): number {
+  return state.speechLog.filter((speech) => speech.content.includes(player.nickname)).length;
+}
+
+function publicNotePressure(state: ThiefGameState, player: ThiefPlayerState): number {
+  return state.publicNotes.reduce((score, note) => (note.content.includes(player.nickname) ? score + 1 : score), 0);
+}
+
+function cluePressure(state: ThiefGameState, player: ThiefPlayerState): number {
+  return state.revealedClues.reduce((score, clue) => {
+    if (clue.includes(player.nickname)) return score + 2;
+    if (clue.includes('内鬼') && (player.role === 'citizen' || player.role === 'detective')) return score + 1;
+    return score;
+  }, 0);
+}
+
+function recentSpeechFocus(state: ThiefGameState, excludePlayerId?: string): ThiefPlayerState | undefined {
+  const recent = [...state.speechLog].reverse().find((speech) => speech.playerId !== excludePlayerId);
+  if (!recent) return undefined;
+  const alive = getAlivePlayers(state).filter((player) => player.playerId !== excludePlayerId);
+  return alive.find((player) => recent.content.includes(player.nickname));
+}
+
+function thiefPublicScore(state: ThiefGameState, player: ThiefPlayerState): number {
+  return player.suspicion * 2 + mentionCount(state, player) + publicNotePressure(state, player) + cluePressure(state, player);
+}
+
+function publicFocusTarget(state: ThiefGameState, excludePlayerId?: string): ThiefPlayerState | undefined {
+  const alive = getAlivePlayers(state).filter((player) => player.playerId !== excludePlayerId);
+  return [...alive].sort((a, b) => thiefPublicScore(state, b) - thiefPublicScore(state, a))[0];
+}
+
+const THIEF_PERSONAS: ThiefPersona[] = ['冷静观察型', '强势带队型', '圆滑周旋型', '直觉冲票型'];
+
+function rememberPublicNote(state: ThiefGameState, content: string): void {
+  const trimmed = content.trim();
+  if (!trimmed) return;
+  const last = state.publicNotes[state.publicNotes.length - 1];
+  if (last?.content === trimmed && last.round === state.round) return;
+  state.publicNotes.push({ round: state.round, content: trimmed });
+}
+
+function personaLead(player: ThiefPlayerState): string {
+  switch (player.persona) {
+    case '冷静观察型':
+      return '我先把能对上的信息摆出来。';
+    case '强势带队型':
+      return '我先把结论放前面。';
+    case '圆滑周旋型':
+      return '我先不把话说死，但有些点确实不对。';
+    case '直觉冲票型':
+      return '我现在的第一反应很强烈。';
+    default:
+      return '我先说我的判断。';
+  }
+}
+
+function assignThiefPersona(role: ThiefRole): ThiefPersona {
+  if (role === 'detective') return '冷静观察型';
+  if (role === 'witness') return '冷静观察型';
+  if (role === 'accomplice') return '圆滑周旋型';
+  if (role === 'thief' || role === 'master_thief') return Math.random() < 0.5 ? '圆滑周旋型' : '强势带队型';
+  return pick(THIEF_PERSONAS) ?? '冷静观察型';
 }
 
 /** 根据玩家数量分配角色 */
@@ -93,6 +159,7 @@ export function initThiefGameState(
     playerId: p.playerId,
     nickname: p.nickname,
     role: assignments[p.playerId],
+      persona: assignThiefPersona(assignments[p.playerId]),
     isAlive: true,
     hasSpoken: false,
     hasInvestigated: false,
@@ -125,6 +192,7 @@ export function initThiefGameState(
     crimeScene,
     clues,
     masterThiefEscapeUsed: false,
+    publicNotes: [{ round: 1, content: `案件开始：失窃物品是${stolenItem}，所有人先围绕现场和不在场证明发言。` }],
     events: [
       {
         id: crypto.randomUUID(),
@@ -227,7 +295,11 @@ export function startThiefVoting(state: ThiefGameState): void {
   state.phase = 'voting';
   state.votes = {};
   state.voteStatus = {};
-  logEvent(state, 'phase_change', `第 ${state.round} 轮讨论结束，进入投票`);
+  const focus = publicFocusTarget(state);
+  const clueSummary = state.revealedClues.length > 0 ? `已公开线索 ${state.revealedClues.length} 条。` : '当前还没有公开线索。';
+  const focusSummary = focus ? `目前场上最受关注的是 ${focus.nickname}。` : '场上焦点仍不够集中。';
+  rememberPublicNote(state, `${clueSummary}${focusSummary}`);
+  logEvent(state, 'phase_change', `第 ${state.round} 轮讨论结束，进入投票。${clueSummary}${focusSummary}`);
 }
 
 /** 投票 */
@@ -280,6 +352,7 @@ export function resolveThiefVote(state: ThiefGameState): void {
     })
     .join('，');
   if (voteSummary) logEvent(state, 'player_action', `投票详情：${voteSummary}`);
+  if (voteSummary) rememberPublicNote(state, `第 ${state.round} 轮投票分布：${voteSummary}`);
 
   let eliminated: string | null = null;
   let maxVotes = 0;
@@ -344,7 +417,18 @@ export function nextInvestigationRound(state: ThiefGameState): void {
     logEvent(state, 'special_event', `彩蛋事件「${event.label}」：${event.description}`);
   }
 
-  logEvent(state, 'phase_change', `第 ${state.round} 轮调查开始，请大家轮流发言`);
+  const focus = publicFocusTarget(state);
+  rememberPublicNote(
+    state,
+    focus
+      ? `第 ${state.round} 轮重新调查，当前焦点仍是 ${focus.nickname}。别忽略侦探笔记和已公开线索。`
+      : `第 ${state.round} 轮重新调查，场上没有绝对焦点，谁先带节奏谁就更值得留意。`,
+  );
+  logEvent(
+    state,
+    'phase_change',
+    `第 ${state.round} 轮调查开始，请大家轮流发言${focus ? `。上一轮最受怀疑的是 ${focus.nickname}` : ''}，别忽略侦探笔记和公开线索。`,
+  );
 }
 
 // ===== AI 行为 =====
@@ -361,6 +445,9 @@ export function generateInvestigationSpeech(
   const topSuspect = sortedBySuspicion[0];
   const midSuspects = sortedBySuspicion.filter((p) => p.suspicion > 0 && p !== topSuspect).slice(0, 2);
   const lastSpeakers = state.speechLog.filter((s) => s.playerId !== player.playerId).slice(-3);
+  const latestClue = state.revealedClues[state.revealedClues.length - 1];
+  const publicFocus = publicFocusTarget(state, player.playerId);
+  const recentFocus = recentSpeechFocus(state, player.playerId);
 
   // ---- 侦探：已知查验结果，据此发言 ----
   if (player.role === 'detective') {
@@ -376,16 +463,19 @@ export function generateInvestigationSpeech(
 
     if (confirmedThief.length > 0) {
       const name = confirmedThief[0]!;
-      return `我调查过 ${name}，${name} 就是小偷！请大家把票投给 ${name}，别再被其他人带偏了。`;
+      return `${personaLead(player)}我调查过 ${name}，${name} 就是小偷！请大家把票投给 ${name}，别再被其他人带偏了。`;
     }
     if (confirmedInnocent.length > 0 && topSuspect) {
       const innocentName = confirmedInnocent[0]!;
-      return `我查过 ${innocentName}，${innocentName} 是清白的。现在嫌疑最高的是 ${topSuspect.nickname}，我建议重点观察 ${topSuspect.nickname}。`;
+      return `${personaLead(player)}我查过 ${innocentName}，${innocentName} 是清白的。现在嫌疑最高的是 ${topSuspect.nickname}，我建议重点观察 ${topSuspect.nickname}。`;
+    }
+    if (latestClue && topSuspect) {
+      return `${personaLead(player)}刚公开的线索【${latestClue}】不能白看。现在最该解释的人还是 ${topSuspect.nickname}，我建议把 ${topSuspect.nickname} 放到焦点位。`;
     }
     if (topSuspect) {
-      return `目前 ${topSuspect.nickname} 嫌疑最高，我需要再调查其他人来验证。请大家保持警惕。`;
+      return `${personaLead(player)}目前 ${topSuspect.nickname} 嫌疑最高，我需要再调查其他人来验证。请大家保持警惕。`;
     }
-    return `我打算再调查一轮，尽快锁定目标。大家有任何发现请说出来。`;
+    return `${personaLead(player)}我打算再调查一轮，尽快锁定目标。大家有任何发现请说出来。`;
   }
 
   // ---- 小偷/神偷：嫁祸高嫌疑但非队友的人 ----
@@ -403,39 +493,55 @@ export function generateInvestigationSpeech(
       if (lastSpeakers.length > 0) {
         const recent = lastSpeakers[lastSpeakers.length - 1]!;
         if (recent.playerId !== bestFrame.playerId) {
-          return `我同意 ${recent.nickname} 的看法，${bestFrame.nickname} 确实很可疑，${bestFrame.nickname} 需要解释一下。`;
+          return `${personaLead(player)}我同意 ${recent.nickname} 的看法，${bestFrame.nickname} 确实很可疑，${bestFrame.nickname} 需要解释一下。`;
         }
       }
-      return pick(frameReasons)!;
+      if (latestClue) {
+        return `${personaLead(player)}大家别忘了刚才那条线索【${latestClue}】。要我说，这条线索和 ${bestFrame.nickname} 的表现根本对得上。`;
+      }
+      return `${personaLead(player)}${pick(frameReasons)!}`;
     }
-    return `大家都挺正常的，但我感觉有人在演戏。`;
+    return `${personaLead(player)}大家都挺正常的，但我感觉有人在演戏。`;
   }
 
   // ---- 同伙：保队友、挑别人 ----
   if (player.role === 'accomplice') {
     const teammate = alive.find((p) => state.thiefTeamIds.includes(p.playerId));
     if (teammate && topSuspect && topSuspect.playerId !== teammate.playerId) {
-      return `我觉得真正可疑的是 ${topSuspect.nickname}，${teammate.nickname} 一直很冷静，不要转移目标。`;
+      return `${personaLead(player)}我觉得真正可疑的是 ${topSuspect.nickname}，${teammate.nickname} 一直很冷静，不要转移目标。`;
     }
     if (topSuspect) {
-      return `${topSuspect.nickname} 最近表现很奇怪，建议大家多留意。`;
+      return `${personaLead(player)}${topSuspect.nickname} 最近表现很奇怪，建议大家多留意。`;
     }
-    return `我没什么特别怀疑的，大家先别急着投票。`;
+    return `${personaLead(player)}我没什么特别怀疑的，大家先别急着投票。`;
   }
 
   // ---- 目击者：分享线索或提示 ----
   if (player.role === 'witness') {
     if (state.revealedClues.length > 0) {
       const lastClue = state.revealedClues[state.revealedClues.length - 1];
-      return `关于那条线索【${lastClue}】，我觉得可以再深挖一下。`;
+      return `${personaLead(player)}关于那条线索【${lastClue}】，我觉得它不是巧合。谁最想淡化这条线索，谁就更值得被盯住。`;
     }
     if (topSuspect) {
-      return `我观察到 ${topSuspect.nickname} 的行为有些异常，希望能找出更多证据。`;
+      return `${personaLead(player)}我观察到 ${topSuspect.nickname} 的行为有些异常，希望能找出更多证据。`;
     }
-    return `我正在观察每个人的反应，稍后会有发现。`;
+    return `${personaLead(player)}我正在观察每个人的反应，稍后会有发现。`;
   }
 
   // ---- 普通市民：结合嫌疑和发言推理 ----
+  if (player.persona === '冷静观察型' && publicFocus) {
+    return `${personaLead(player)}我先看公开信息：${publicFocus.nickname} 被提到最多，场上总结也一直绕着 TA 转，这个位置最值得继续追问。`;
+  }
+  if (player.persona === '强势带队型' && topSuspect) {
+    return `${personaLead(player)}这一轮我就直接点名 ${topSuspect.nickname}，先把票型和解释都往 TA 身上压，别再散着聊了。`;
+  }
+  if (player.persona === '圆滑周旋型' && recentFocus) {
+    return `${personaLead(player)}我不急着把话说死，但 ${recentFocus.nickname} 这会儿确实最像需要补解释的人，大家可以先顺着这个点往下聊。`;
+  }
+  if (player.persona === '直觉冲票型' && (recentFocus ?? topSuspect)) {
+    const instinctTarget = recentFocus ?? topSuspect;
+    return `${personaLead(player)}我现在最想盯的就是 ${instinctTarget?.nickname}，这种反应不像是单纯紧张，更像在提前给自己找台阶。`;
+  }
   if (topSuspect) {
     const reasonTemplates = [
       `${topSuspect.nickname} 嫌疑已经 ${topSuspect.suspicion} 了，大家小心。`,
@@ -444,18 +550,18 @@ export function generateInvestigationSpeech(
     ];
     if (midSuspects.length > 0) {
       const second = midSuspects[0]!;
-      return `现在 ${topSuspect.nickname} 和 ${second.nickname} 嫌疑都比较高，但我更怀疑 ${topSuspect.nickname}。`;
+      return `${personaLead(player)}现在 ${topSuspect.nickname} 和 ${second.nickname} 嫌疑都比较高，但我更怀疑 ${topSuspect.nickname}。`;
     }
-    return pick(reasonTemplates)!;
+    return `${personaLead(player)}${pick(reasonTemplates)!}`;
   }
 
   // 引用最近发言
   if (lastSpeakers.length > 0) {
     const last = lastSpeakers[lastSpeakers.length - 1]!;
-    return `我注意到 ${last.nickname} 刚才说"${last.content.slice(0, 40)}…"，这点很值得思考。`;
+    return `${personaLead(player)}我注意到 ${last.nickname} 刚才说"${last.content.slice(0, 40)}…"，这点很值得思考。`;
   }
 
-  return '目前信息还不够，我需要再观察一轮。';
+  return `${personaLead(player)}目前信息还不够，我需要再观察一轮。`;
 }
 
 /** AI 侦探调查目标：优先查高嫌疑但未查过的玩家，随机兜底 */
@@ -488,12 +594,20 @@ export function decideThiefVote(
 ): { targetId: string | null } {
   const alive = getAlivePlayers(state).filter((p) => p.playerId !== player.playerId);
   if (alive.length === 0) return { targetId: null };
+  const publicFocus = publicFocusTarget(state, player.playerId);
+  const recentFocus = recentSpeechFocus(state, player.playerId);
 
   if (state.thiefTeamIds.includes(player.playerId)) {
     // 小偷阵营：优先投非队友中嫌疑最高的，推波助澜
     const citizens = alive.filter((p) => !state.thiefTeamIds.includes(p.playerId));
     if (citizens.length === 0) return { targetId: null };
-    const sorted = [...citizens].sort((a, b) => b.suspicion - a.suspicion);
+    const sorted = [...citizens].sort((a, b) => thiefPublicScore(state, b) - thiefPublicScore(state, a));
+    if (player.persona === '圆滑周旋型' && publicFocus && !state.thiefTeamIds.includes(publicFocus.playerId)) {
+      return { targetId: publicFocus.playerId };
+    }
+    if (player.persona === '强势带队型' && recentFocus && !state.thiefTeamIds.includes(recentFocus.playerId)) {
+      return { targetId: recentFocus.playerId };
+    }
     // 最后1轮且自己高嫌疑时，保命优先
     if (sorted.length === 1 && player.suspicion >= 2) {
       return { targetId: sorted[0].playerId };
@@ -513,22 +627,40 @@ export function decideThiefVote(
       if (target) return { targetId: target.playerId };
     }
     // 没有确认小偷信息，按嫌疑投票
-    const sorted = [...alive].sort((a, b) => b.suspicion - a.suspicion);
-    if (sorted[0] && sorted[0].suspicion >= 2) return { targetId: sorted[0].playerId };
+    const sorted = [...alive].sort((a, b) => thiefPublicScore(state, b) - thiefPublicScore(state, a));
+    if (sorted[0] && thiefPublicScore(state, sorted[0]) >= 2) return { targetId: sorted[0].playerId };
     if (Math.random() < 0.15) return { targetId: null };
     return { targetId: sorted[0]?.playerId ?? null };
   }
 
   // 普通市民：按嫌疑投票，偶有随机
-  const sorted = [...alive].sort((a, b) => b.suspicion - a.suspicion);
-  if (sorted[0] && sorted[0].suspicion > 0) return { targetId: sorted[0].playerId };
+  const sorted = [...alive].sort((a, b) => thiefPublicScore(state, b) - thiefPublicScore(state, a));
+  if (player.persona === '冷静观察型') {
+    if (sorted[0] && thiefPublicScore(state, sorted[0]) >= 2) return { targetId: sorted[0].playerId };
+    return { targetId: null };
+  }
+  if (player.persona === '强势带队型') {
+    return { targetId: (publicFocus ?? sorted[0])?.playerId ?? null };
+  }
+  if (player.persona === '圆滑周旋型') {
+    if (publicFocus && thiefPublicScore(state, publicFocus) >= 1) return { targetId: publicFocus.playerId };
+    if (Math.random() < 0.2) return { targetId: null };
+  }
+  if (player.persona === '直觉冲票型') {
+    return { targetId: (recentFocus ?? publicFocus ?? sorted[0])?.playerId ?? null };
+  }
+  if (sorted[0] && thiefPublicScore(state, sorted[0]) > 0) return { targetId: sorted[0].playerId };
   if (Math.random() < 0.1) return { targetId: null };
   return { targetId: sorted[0]?.playerId ?? null };
 }
 
 /** AI 目击者是否公开线索（嫌疑信息不足时更倾向公开） */
 export function decideWitnessReveal(state: ThiefGameState): boolean {
-  return state.revealedClues.length === 0 && Math.random() < 0.5;
+  if (state.revealedClues.length > 0) return false;
+  const alive = getAlivePlayers(state);
+  const top = [...alive].sort((a, b) => b.suspicion - a.suspicion)[0];
+  const tiedForTop = top ? alive.filter((player) => player.suspicion === top.suspicion).length > 1 : false;
+  return !top || top.suspicion <= 1 || tiedForTop || Math.random() < 0.2;
 }
 
 /** AI 小偷嫁祸目标 */
@@ -555,16 +687,19 @@ export function getThiefView(state: ThiefGameState, playerId: string | null) {
       nickname: p.nickname,
       seatNumber: getSeatNumber(state, p.playerId),
       isAlive: p.isAlive,
+      persona: finished ? p.persona : p.playerId === playerId ? p.persona : undefined,
       role: finished ? p.role : p.playerId === playerId ? p.role : undefined,
       isMe: p.playerId === playerId,
       hasSpoken: p.hasSpoken,
     })),
     myRole: me?.role,
+    myPersona: me?.persona,
     stolenItem: state.stolenItem,
     crimeScene: state.crimeScene,
     revealedClues: state.revealedClues,
     speechLog: state.speechLog,
     myNotes: playerId ? state.privateNotes[playerId] ?? [] : [],
+    publicNotes: state.publicNotes,
     voteStatus: state.voteStatus,
     votes: state.phase === 'voting' ? {} : state.votes,
     accusedPlayerId: state.accusedPlayerId,
