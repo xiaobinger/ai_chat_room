@@ -6,6 +6,8 @@ import { WerewolfGame } from '../../../ai-worker/src/game/werewolf-game';
 import { ThiefGame } from '../../../ai-worker/src/game/thief-game';
 import { MysteryGame } from '../../../ai-worker/src/game/mystery-game';
 import { UndercoverGame } from '../../../ai-worker/src/game/undercover-game';
+import { createModelRegistry } from '../../../ai-worker/src/registry';
+import type { ModelProvider } from '../../../ai-worker/src/model-provider';
 
 export type GameTypeStr = 'werewolf' | 'murder_mystery' | 'who_is_the_thief' | 'who_is_undercover';
 
@@ -13,6 +15,26 @@ export type GameTypeStr = 'werewolf' | 'murder_mystery' | 'who_is_the_thief' | '
 const STEP_DELAY_MS = 900;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+let cachedGameSpeechProvider: ModelProvider | null | undefined;
+
+function resolveGameSpeechProvider(): ModelProvider | null {
+  if (cachedGameSpeechProvider !== undefined) return cachedGameSpeechProvider;
+  try {
+    const registry = createModelRegistry();
+    const requested = process.env.GAME_SPEECH_MODEL?.trim() || 'auto';
+    const provider = registry.resolve(requested);
+    cachedGameSpeechProvider = provider;
+    console.warn(
+      `[game-llm] bootstrap ${JSON.stringify({ requestedModel: requested, resolvedProvider: provider.name })}`,
+    );
+  } catch (error) {
+    cachedGameSpeechProvider = null;
+    console.warn(
+      `[game-llm] disabled ${JSON.stringify({ message: error instanceof Error ? error.message : String(error) })}`,
+    );
+  }
+  return cachedGameSpeechProvider;
+}
 
 export interface DirectorPlayerRow {
   id: string;
@@ -332,6 +354,7 @@ function buildEngine(
   state: Record<string, unknown> | undefined,
   judgeOptions?: JudgeOptions,
 ): BaseGameEngine {
+  const speechProvider = resolveGameSpeechProvider();
   const infos: GamePlayerInfo[] = players.map((p) => ({
     playerId: p.id,
     nickname: p.nickname,
@@ -343,13 +366,14 @@ function buildEngine(
       return new WerewolfGame(infos, state, {
         judgeMode: judgeOptions?.judgeMode ?? null,
         judgePlayerId: judgeOptions?.judgePlayerId ?? null,
+        speechProvider: speechProvider ?? undefined,
       });
     case 'who_is_the_thief':
-      return new ThiefGame(infos, state);
+      return new ThiefGame(infos, state, { speechProvider: speechProvider ?? undefined });
     case 'murder_mystery':
-      return new MysteryGame(infos, state);
+      return new MysteryGame(infos, state, { speechProvider: speechProvider ?? undefined });
     case 'who_is_undercover':
-      return new UndercoverGame(infos, state);
+      return new UndercoverGame(infos, state, { speechProvider: speechProvider ?? undefined });
     default:
       throw new GameError('invalid_game_type', `未知游戏类型：${gameType}`);
   }

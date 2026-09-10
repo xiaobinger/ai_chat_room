@@ -2,6 +2,8 @@ import type { ModelProvider } from '../model-provider';
 
 /** 游戏发言生成的通用请求 */
 export interface GameSpeechRequest {
+  /** 游戏类型 */
+  game: string;
   /** 玩家昵称 */
   nickname: string;
   /** 游戏内身份（狼人/预言家/小偷/侦探/剧本杀角色名...） */
@@ -20,6 +22,11 @@ export interface GameSpeechRequest {
   customHint?: string;
 }
 
+function logGameLlm(stage: 'request' | 'success' | 'fallback', payload: Record<string, unknown>): void {
+  const line = JSON.stringify(payload);
+  console.warn(`[game-llm] ${stage} ${line}`);
+}
+
 /**
  * 用 LLM 生成游戏发言——替代固定模板，让 AI 像真人一样说话。
  * LLM 不可用时返回 null，调用方回退到模板。
@@ -30,6 +37,16 @@ export async function generateLlmSpeech(
 ): Promise<string | null> {
   const systemPrompt = buildSystemPrompt(request);
   const userPrompt = buildUserPrompt(request);
+  const meta = {
+    game: request.game,
+    provider: provider.name,
+    nickname: request.nickname,
+    role: request.gameRole,
+    phase: request.phase,
+    round: request.round,
+  };
+
+  logGameLlm('request', meta);
 
   try {
     const result = await provider.speak({
@@ -46,9 +63,18 @@ export async function generateLlmSpeech(
       timeoutMs: request.timeoutMs,
     });
     const text = result.text.trim();
-    if (!text || text.length < 2) return null;
+    if (!text || text.length < 2) {
+      logGameLlm('fallback', { ...meta, reason: 'empty_response' });
+      return null;
+    }
+    logGameLlm('success', { ...meta, length: text.length, tokens: result.tokens, tokensMeasured: result.tokensMeasured });
     return text;
-  } catch {
+  } catch (error) {
+    logGameLlm('fallback', {
+      ...meta,
+      reason: 'provider_error',
+      message: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
 }

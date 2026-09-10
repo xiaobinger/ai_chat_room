@@ -11,6 +11,7 @@ import { decideThiefVote } from '../game/who-is-the-thief-engine';
 import { decideMysteryVote } from '../game/mystery-engine';
 import type { GameState } from '../game/types';
 import type { GamePlayerInfo } from '../game/errors';
+import type { ModelProvider } from '../model-provider';
 
 function aiPlayers(count: number): GamePlayerInfo[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -28,6 +29,22 @@ function withMockedRandom<T>(value: number, fn: () => T): T {
   } finally {
     Math.random = original;
   }
+}
+
+function gameSpeechProvider(text: string, shouldThrow = false): ModelProvider {
+  return {
+    name: shouldThrow ? 'broken' : 'fake-game-model',
+    async speak() {
+      if (shouldThrow) throw new Error('provider down');
+      return { text, tokens: 32, tokensMeasured: true };
+    },
+    async scoreRelevance() {
+      return null;
+    },
+    async summarize() {
+      return null;
+    },
+  };
 }
 
 /** 驱动全 AI 对局直到结束（或超过步数上限，视为卡死） */
@@ -76,11 +93,11 @@ describe('谁是卧底', () => {
     expect(after.currentSpeakerId).not.toBe(speaker);
   });
 
-  it('平票无人出局，多数票淘汰', () => {
+  it('平票无人出局，多数票淘汰', async () => {
     const game = new UndercoverGame(aiPlayers(4));
     // 快进到投票
     let guard = 0;
-    while ((game.getState() as { phase: string }).phase === 'describing' && guard++ < 20) game.step();
+    while ((game.getState() as { phase: string }).phase === 'describing' && guard++ < 20) await game.step();
     expect((game.getState() as { phase: string }).phase).toBe('voting');
   });
 
@@ -134,6 +151,17 @@ describe('谁是卧底', () => {
     expect((view.publicNotes ?? []).length).toBeGreaterThan(0);
     expect(view.players.find((player) => player.isMe)?.persona).toBe(view.myPersona);
     expect(view.players.filter((player) => !player.isMe && player.persona).length).toBe(0);
+  });
+
+  it('接入 speechProvider 后，AI 描述优先使用大模型内容', async () => {
+    const game = new UndercoverGame(aiPlayers(4), undefined, {
+      speechProvider: gameSpeechProvider('这轮我先从使用场景来描述，别把话说得太满。'),
+    });
+
+    await game.step();
+
+    const state = game.getState() as { descriptions: { content: string }[] };
+    expect(state.descriptions[0]?.content).toContain('使用场景');
   });
 
   it('谨慎试探型平民在信号不足时会保留投票', () => {
@@ -563,17 +591,30 @@ describe('谁是小偷', () => {
 
     expect(decideThiefVote(state as never, voter as never).targetId).toBe(target.playerId);
   });
+
+  it('speechProvider 失败时会回退到规则发言，不阻塞调查阶段', async () => {
+    const game = new ThiefGame(aiPlayers(5), undefined, {
+      speechProvider: gameSpeechProvider('不会被使用', true),
+    });
+
+    await game.step();
+
+    const state = game.getState() as { speechLog: { content: string }[] };
+    expect(state.speechLog.length).toBe(1);
+    expect(state.speechLog[0]?.content.length).toBeGreaterThan(0);
+    expect(state.speechLog[0]?.content).not.toBe('不会被使用');
+  });
 });
 
 describe('剧本杀', () => {
-  it('全 AI 对局按阶段推进到揭晓', () => {
+  it('全 AI 对局按阶段推进到揭晓', async () => {
     const game = new MysteryGame(aiPlayers(5));
     const phases: string[] = [];
     let steps = 0;
     while (!game.isFinished() && steps < 500) {
       const phase = (game.getState() as { phase: string }).phase;
       if (phases[phases.length - 1] !== phase) phases.push(phase);
-      game.step();
+      await game.step();
       steps += 1;
     }
     expect(game.isFinished()).toBe(true);
@@ -664,8 +705,8 @@ describe('引擎重启恢复', () => {
   it('从持久化状态恢复后能继续推进', async () => {
     const game = new UndercoverGame(aiPlayers(5));
     // 推进几步
-    game.step();
-    game.step();
+    await game.step();
+    await game.step();
     const saved = game.getState();
 
     const restored = new UndercoverGame(aiPlayers(5), saved);

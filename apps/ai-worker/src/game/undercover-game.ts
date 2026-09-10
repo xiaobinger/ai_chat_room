@@ -1,5 +1,5 @@
 import type { UndercoverGameState } from './who-is-undercover-types';
-import { UNDERCOVER_ROLE_LABELS } from './who-is-undercover-types';
+import { UNDERCOVER_PERSONA_DESCRIPTIONS, UNDERCOVER_ROLE_LABELS } from './who-is-undercover-types';
 import { GameError, type EngineAction, type GamePlayerInfo } from './errors';
 import { BaseGameEngine } from './base-engine';
 import {
@@ -15,6 +15,7 @@ import {
   decideUndercoverVote,
   getUndercoverView,
 } from './who-is-undercover-engine';
+import { generateLlmSpeech } from './speech-generator';
 
 const DESCRIBE_DEADLINE_MS = 30_000;
 const VOTE_DEADLINE_MS = 45_000;
@@ -22,9 +23,15 @@ const VOTE_DEADLINE_MS = 45_000;
 /** 谁是卧底引擎 */
 export class UndercoverGame extends BaseGameEngine {
   private state: UndercoverGameState;
+  private speechProvider: import('../model-provider').ModelProvider | null = null;
 
-  constructor(players: GamePlayerInfo[], state?: Record<string, unknown>) {
+  constructor(
+    players: GamePlayerInfo[],
+    state?: Record<string, unknown>,
+    options?: { speechProvider?: import('../model-provider').ModelProvider },
+  ) {
     super(players);
+    this.speechProvider = options?.speechProvider ?? null;
     if (state) {
       if (state.format !== 2) throw new GameError('unsupported_state', '旧版本游戏状态无法恢复');
       this.state = state as unknown as UndercoverGameState;
@@ -117,7 +124,7 @@ export class UndercoverGame extends BaseGameEngine {
     }
   }
 
-  step(): boolean {
+  async step(): Promise<boolean> {
     const state = this.state;
     if (state.phase === 'result') return false;
 
@@ -128,7 +135,8 @@ export class UndercoverGame extends BaseGameEngine {
         return true;
       }
       if (!this.isAi(speaker.playerId)) return false;
-      applyDescription(state, speaker.playerId, generateUndercoverDescription(state, speaker));
+      const speech = await this.generateAiDescription(speaker);
+      applyDescription(state, speaker.playerId, speech);
       return true;
     }
 
@@ -145,5 +153,36 @@ export class UndercoverGame extends BaseGameEngine {
 
     resolveUndercoverVote(state);
     return true;
+  }
+
+  private async generateAiDescription(player: UndercoverGameState['players'][number]): Promise<string> {
+    const fallback = generateUndercoverDescription(this.state, player);
+    if (!this.speechProvider) return fallback;
+
+    const recentEvents = [
+      ...this.state.publicNotes.slice(-2).map((note) => note.content),
+      ...this.state.descriptions
+        .filter((description) => description.round === this.state.round)
+        .slice(-4)
+        .map((description) => `${description.nickname}: ${description.content}`),
+    ];
+
+    const customHint =
+      player.role === 'undercover'
+        ? `你是卧底，要尽量贴近大多数人的描述方向，但避免把词说得太实。你的词是“${player.word}”。`
+        : `你是平民，请自然描述自己的词“${player.word}”，帮助同阵营识别偏离的人。`;
+
+    const llmSpeech = await generateLlmSpeech(this.speechProvider, {
+      game: 'who_is_undercover',
+      nickname: player.nickname,
+      gameRole: UNDERCOVER_ROLE_LABELS[player.role],
+      personality: UNDERCOVER_PERSONA_DESCRIPTIONS[player.persona] ?? player.persona,
+      phase: '描述阶段',
+      round: this.state.round,
+      recentEvents,
+      timeoutMs: 18_000,
+      customHint,
+    });
+    return llmSpeech ?? fallback;
   }
 }

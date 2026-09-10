@@ -266,7 +266,7 @@ export class MysteryGame extends BaseGameEngine {
     }
   }
 
-  step(): boolean {
+  async step(): Promise<boolean> {
     const state = this.state;
     if (state.phase === 'reveal') return false;
     const alive = getAlivePlayers(state);
@@ -275,7 +275,8 @@ export class MysteryGame extends BaseGameEngine {
       case 'introduction': {
         for (const p of alive) {
           if (this.isAi(p.playerId) && !p.hasSpoken) {
-            this.state = addDiscussion(state, p.playerId, generateMysterySpeech(state, p, 'introduction'), 'statement');
+            const speech = await this.generateAiSpeech(p, 'introduction');
+            this.state = addDiscussion(state, p.playerId, speech, 'statement');
             return true;
           }
         }
@@ -307,7 +308,8 @@ export class MysteryGame extends BaseGameEngine {
         this.generateSecretChat();
         for (const p of alive) {
           if (this.isAi(p.playerId) && !p.hasSpoken) {
-            this.state = addDiscussion(state, p.playerId, generateMysterySpeech(state, p, 'discussion'), 'statement');
+            const speech = await this.generateAiSpeech(p, 'discussion');
+            this.state = addDiscussion(state, p.playerId, speech, 'statement');
             return true;
           }
         }
@@ -321,7 +323,8 @@ export class MysteryGame extends BaseGameEngine {
       case 'accusation': {
         for (const p of alive) {
           if (this.isAi(p.playerId) && !p.hasSpoken) {
-            this.state = addDiscussion(state, p.playerId, generateMysterySpeech(state, p, 'accusation'), 'accusation');
+            const speech = await this.generateAiSpeech(p, 'accusation');
+            this.state = addDiscussion(state, p.playerId, speech, 'accusation');
             return true;
           }
         }
@@ -346,6 +349,41 @@ export class MysteryGame extends BaseGameEngine {
       default:
         return false;
     }
+  }
+
+  private async generateAiSpeech(
+    player: MysteryPlayerState,
+    type: 'introduction' | 'discussion' | 'accusation',
+  ): Promise<string> {
+    const fallback = generateMysterySpeech(this.state, player, type);
+    if (!this.speechProvider) return fallback;
+
+    const recentEvents = [
+      ...this.state.publicNotes.slice(-2).map((note) => note.content),
+      ...this.state.discussionLog.slice(-5).map((entry) => `${entry.playerName}: ${entry.content}`),
+      ...this.state.clues
+        .filter((clue) => this.state.discoveredClues.includes(clue.id))
+        .slice(-2)
+        .map((clue) => `线索【${clue.name}】：${clue.revealsInfo}`),
+    ];
+    const phaseLabel =
+      type === 'introduction' ? '自我介绍' : type === 'discussion' ? '圆桌讨论' : '公开指控';
+    const customHint = player.character.isMurderer
+      ? `你是真正的凶手，要像真人一样自然回应，尽量引导怀疑去别人身上。`
+      : `你不是凶手，请结合自己的人设、线索和讨论内容，认真推动破案。`;
+
+    const llmSpeech = await generateLlmSpeech(this.speechProvider, {
+      game: 'murder_mystery',
+      nickname: player.nickname,
+      gameRole: `${player.character.name}（${player.character.role}）`,
+      personality: player.character.personality,
+      phase: phaseLabel,
+      round: this.state.round,
+      recentEvents,
+      timeoutMs: 20_000,
+      customHint,
+    });
+    return llmSpeech ?? fallback;
   }
 
   private transition(phase: MysteryGameState['phase'], message: string): void {
@@ -470,6 +508,7 @@ export class MysteryGame extends BaseGameEngine {
       try {
         const monologueText = await Promise.race([
           generateLlmSpeech(this.speechProvider, {
+            game: 'murder_mystery',
             nickname: murderer.nickname,
             gameRole: `凶手（${murderer.character.name}，${murderer.character.role}）`,
             personality: murderer.character.personality,

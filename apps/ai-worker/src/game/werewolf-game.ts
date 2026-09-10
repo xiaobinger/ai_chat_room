@@ -445,6 +445,7 @@ export class WerewolfGame extends BaseGameEngine {
           try {
             const llmSpeech = await Promise.race([
               generateLlmSpeech(this.speechProvider, {
+                game: 'werewolf',
                 nickname: p.nickname,
                 gameRole: WEREWOLF_ROLE_LABELS[p.role] ?? p.role,
                 personality: getRolePersonality(p.role),

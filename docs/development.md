@@ -215,6 +215,10 @@ PM2 配置在 `ecosystem.config.cjs`（双进程：`tianma-api` + `tianma-worker
 - **阶段遮罩转场**：`apps/web/src/components/game-parts.tsx` 新增 `StageVeil`，在阶段/轮次推进时提供短暂整屏遮罩，让切场不再只是顶部文案变了
 - **焦点联动高亮**：`PlayerChips` 和 `Timeline` 已支持焦点联动，主持总结或嫌疑榜点到的角色会同步高亮到玩家卡片和时间线事件
 - **结果逐步揭晓**：新增 `ResultRevealCard`，先用于谁是卧底的词底揭示，改成分步亮相而不是一口气全部摊开
+- **游戏 AI 已真正接入模型发言链路**：`apps/api/src/game/game-director.ts` 现在会读取 `GAME_SPEECH_MODEL`（未配置则回落到 `DEFAULT_MODEL/auto`），统一解析出游戏用 `speechProvider`，并注入狼人杀 / 剧本杀 / 谁是小偷 / 谁是卧底四套引擎
+- **四游戏发言策略升级为“模型优先，规则兜底”**：`werewolf-game.ts`、`mystery-game.ts`、`thief-game.ts`、`undercover-game.ts` 都会先尝试 LLM 生成发言；模型超时、空响应或端点错误时，立即回退到现有规则模板，不会卡死对局
+- **游戏模型调用日志落地**：`apps/ai-worker/src/game/speech-generator.ts` 会输出统一的 `[game-llm] request/success/fallback` 日志，日志里包含游戏类型、玩家、阶段、轮次、provider 名称和 fallback 原因，后续排查“到底有没有调模型”可以直接看 worker/api 日志
+- **谁是小偷 / 谁是卧底正式进入异步 AI 发言**：两套游戏原先只有本地同步模板，现已改为异步 `step()` 推进以兼容真实模型请求；`games.test.ts` 新增“模型发言优先使用”和“provider 失败自动回退”回归测试
 
 ### 狼人杀引擎要点（WP19）
 

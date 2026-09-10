@@ -673,6 +673,24 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 - `pnpm test`：全仓测试通过
 - `pnpm lint`：0 errors，保留既有 `console` warnings
 
+## 2026-09-10：四个游戏 AI 发言正式接入大模型
+
+### 关键事件
+- **导演层开始统一注入模型**：`GameDirector` 现在会在创建游戏引擎时解析 `GAME_SPEECH_MODEL` / `DEFAULT_MODEL`，把同一个 `speechProvider` 注入狼人杀、剧本杀、谁是小偷、谁是卧底
+- **四个游戏改为“模型优先，规则兜底”**：游戏 AI 发言会先请求模型；若模型超时、空响应或端点报错，则立即退回原有规则模板，不会拖挂对局节奏
+- **调用记录终于可见**：`speech-generator.ts` 统一输出 `[game-llm] request/success/fallback` 日志，能直接看到是哪一局、哪个角色、哪个阶段调了哪个 provider，以及是否发生 fallback
+
+### 技术细节
+- API 入口：`apps/api/src/game/game-director.ts`
+- 游戏引擎：`apps/ai-worker/src/game/werewolf-game.ts`、`apps/ai-worker/src/game/mystery-game.ts`、`apps/ai-worker/src/game/thief-game.ts`、`apps/ai-worker/src/game/undercover-game.ts`
+- 公共调用层：`apps/ai-worker/src/game/speech-generator.ts`
+- 回归测试：`apps/ai-worker/src/__tests__/games.test.ts`
+
+### 验证
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：全仓测试通过
+- `pnpm lint`：0 errors，保留既有 `console` warnings
+
 ### 技术细节
 - 后端文件：`apps/ai-worker/src/game/mystery-game.ts`、`apps/ai-worker/src/game/mystery-engine.ts`、`apps/ai-worker/src/game/who-is-undercover-engine.ts`、`apps/ai-worker/src/game/who-is-the-thief-engine.ts`
 - 前端文件：`apps/web/src/components/MysteryView.tsx`、`apps/web/src/components/ThiefGameView.tsx`、`apps/web/src/components/UndercoverView.tsx`
