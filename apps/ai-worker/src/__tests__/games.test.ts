@@ -8,6 +8,7 @@ import { MysteryGame } from '../game/mystery-game';
 import { aiJudgeBroadcast } from '../game/werewolf-engine';
 import { decideUndercoverVote } from '../game/who-is-undercover-engine';
 import { decideThiefVote } from '../game/who-is-the-thief-engine';
+import type { ThiefGameState } from '../game/who-is-the-thief-types';
 import { decideMysteryVote } from '../game/mystery-engine';
 import type { GameState } from '../game/types';
 import type { GamePlayerInfo } from '../game/errors';
@@ -610,6 +611,24 @@ describe('谁是小偷', () => {
     // 失败不产出任何发言（保持沉默），但已标记该 AI 发言完毕，流程不阻塞
     expect(state.speechLog.length).toBe(0);
     expect(state.players.some((p) => p.hasSpoken)).toBe(true);
+  });
+
+  it('侦探查验到小偷后，投票必须投给该小偷（多词昵称也能正确匹配）', () => {
+    // 生产环境 AI 昵称是“AI 玩家 N”这类带空格的多词，之前 `\S+` 只抓到最后一个词导致匹配失败
+    const players: GamePlayerInfo[] = Array.from({ length: 5 }, (_, i) => ({
+      playerId: `p${i + 1}`,
+      nickname: `AI 玩家 ${i + 1}`,
+      isAi: true,
+    }));
+    const game = new ThiefGame(players);
+    const state = game.getState() as ThiefGameState;
+    const detective = state.players.find((p) => p.role === 'detective')!;
+    const thief = state.players.find((p) => state.thiefTeamIds.includes(p.playerId) && p.role === 'thief')!;
+
+    game.handleAction({ type: 'investigate', playerId: detective.playerId, targetId: thief.playerId });
+
+    const vote = decideThiefVote(state, detective);
+    expect(vote.targetId).toBe(thief.playerId);
   });
 });
 

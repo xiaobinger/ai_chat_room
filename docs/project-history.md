@@ -724,6 +724,21 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 - `pnpm test`：全仓 228 测试全绿（ai-core 78 + queue 22 + ai-worker 97 + api 31）
 - `pnpm lint`：0 errors，仅保留既有 `console.log` warnings
 
+## 2026-09-11：AI 逻辑漏洞修复（侦探乱投 + 发言编造）
+
+### 关键事件
+- **侦探查证后正确投票**：`who-is-the-thief-engine.ts` 里侦探调查结果按 `(\S+) 就是小偷` 解析昵称，遇到"AI 玩家 N"这类带空格的多词昵称只抓到最后一个词，导致"查到了小偷却按嫌疑乱投、把好人投出去"。改为 `parseInvestigationVerdicts()` 按完整昵称匹配并落成 playerId，覆盖发言与投票两处决策。
+- **禁止 AI 编造他人发言**：`speech-generator.ts` 系统提示词新增"只能基于给定对话记录发表意见，绝不编造/转述/虚构任何玩家（尤其真实玩家）没说过的话""不要替其他玩家代言或捏造观点"，修复"AI 瞎说真人玩家指认谁有嫌疑"的幻觉。
+
+### 技术细节
+- 后端：`apps/ai-worker/src/game/who-is-the-thief-engine.ts`、`apps/ai-worker/src/game/speech-generator.ts`
+- 回归测试：`games.test.ts` 新增"侦探查验到小偷后必须投给该小偷（多词昵称）"用例
+
+### 验证
+- `pnpm --filter @tianma/ai-worker test`：98 测试全绿
+- `pnpm --filter @tianma/ai-worker typecheck`：通过
+- `pnpm --filter @tianma/ai-worker lint`：0 errors，仅保留既有 `console` warnings
+
 ## 经验教训
 1. Windows 环境下工作区路径处理需要特别小心，`\\?\` 前缀会导致 CMD 和部分 Node 工具异常
 2. 后台进程管理在受限沙箱中不可靠，优先让用户本地终端常驻服务

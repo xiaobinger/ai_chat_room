@@ -451,15 +451,12 @@ export function generateInvestigationSpeech(
 
   // ---- 侦探：已知查验结果，据此发言 ----
   if (player.role === 'detective') {
-    const myNotes = state.privateNotes[player.playerId] ?? [];
-    const confirmedInnocent = myNotes.filter((n) => n.includes('不是小偷')).map((n) => {
-      const m = n.match(/(\S+) 不是小偷/);
-      return m ? m[1] : null;
-    }).filter(Boolean) as string[];
-    const confirmedThief = myNotes.filter((n) => n.includes('就是小偷')).map((n) => {
-      const m = n.match(/(\S+) 就是小偷/);
-      return m ? m[1] : null;
-    }).filter(Boolean) as string[];
+    const confirmedInnocent = parseInvestigationVerdicts(state, player.playerId, '不是小偷')
+      .map((id) => state.players.find((p) => p.playerId === id)?.nickname)
+      .filter((n): n is string => Boolean(n));
+    const confirmedThief = parseInvestigationVerdicts(state, player.playerId, '就是小偷')
+      .map((id) => state.players.find((p) => p.playerId === id)?.nickname)
+      .filter((n): n is string => Boolean(n));
 
     if (confirmedThief.length > 0) {
       const name = confirmedThief[0]!;
@@ -564,19 +561,35 @@ export function generateInvestigationSpeech(
   return `${personaLead(player)}目前信息还不够，我需要再观察一轮。`;
 }
 
+/** 从侦探私密笔记里解析出判定结果；按完整昵称匹配，避免"AI 玩家 3"这类多词昵称被 `\S+` 只抓到最后一个词 */
+function parseInvestigationVerdicts(
+  state: ThiefGameState,
+  detectiveId: string,
+  verdict: '就是小偷' | '不是小偷',
+): string[] {
+  const notes = state.privateNotes[detectiveId] ?? [];
+  const ids: string[] = [];
+  for (const note of notes) {
+    if (!note.includes(verdict)) continue;
+    for (const p of state.players) {
+      if (note.includes(`${p.nickname} ${verdict}`)) {
+        ids.push(p.playerId);
+        break;
+      }
+    }
+  }
+  return ids;
+}
+
 /** AI 侦探调查目标：优先查高嫌疑但未查过的玩家，随机兜底 */
 export function decideDetectiveTarget(state: ThiefGameState, detective: ThiefPlayerState): string | undefined {
   const targets = getAlivePlayers(state).filter((p) => p.playerId !== detective.playerId);
   if (targets.length === 0) return undefined;
 
-  const investigatedIds = new Set(
-    (state.privateNotes[detective.playerId] ?? [])
-      .map((n) => {
-        const m = n.match(/(\S+) (就是|不是)小偷/);
-        return m ? targets.find((t) => t.nickname === m[1])?.playerId : null;
-      })
-      .filter(Boolean) as string[],
-  );
+  const investigatedIds = new Set([
+    ...parseInvestigationVerdicts(state, detective.playerId, '就是小偷'),
+    ...parseInvestigationVerdicts(state, detective.playerId, '不是小偷'),
+  ]);
   // 未查过的高嫌疑目标
   const uninvestigated = targets.filter((p) => !investigatedIds.has(p.playerId));
   if (uninvestigated.length > 0) {
@@ -617,13 +630,9 @@ export function decideThiefVote(
 
   // 好人阵营
   if (player.role === 'detective') {
-    const myNotes = state.privateNotes[player.playerId] ?? [];
-    const confirmedThief = myNotes.filter((n) => n.includes('就是小偷')).map((n) => {
-      const m = n.match(/(\S+) 就是小偷/);
-      return m ? m[1] : null;
-    }).filter(Boolean);
+    const confirmedThief = parseInvestigationVerdicts(state, player.playerId, '就是小偷');
     if (confirmedThief.length > 0) {
-      const target = alive.find((p) => p.nickname === confirmedThief[0]);
+      const target = alive.find((p) => confirmedThief.includes(p.playerId));
       if (target) return { targetId: target.playerId };
     }
     // 没有确认小偷信息，按嫌疑投票
