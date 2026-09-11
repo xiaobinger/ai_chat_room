@@ -619,6 +619,7 @@ export function getJudgeView(state: GameState): Record<string, unknown> {
     witchPoisonTarget: state.witchPoisonTarget,
     nightVictim: state.nightVictim,
     nightVictimSeatNumber: state.nightVictim ? getSeatNumber(state, state.nightVictim) : null,
+    typingPlayerId: state.typingPlayerId ?? null,
     events: state.events,
   };
 }
@@ -651,6 +652,7 @@ export function getPlayerView(state: GameState, playerId: string | null, isJudge
     deadToday: state.deadToday,
     winner: state.winner,
     pendingHunterIsMe: state.pendingHunter !== undefined && state.pendingHunter === playerId,
+    typingPlayerId: state.typingPlayerId ?? null,
     // 事件里剥离角色信息（防止前端直接从 events 反推身份）；
     // 秘密事件（狼刀/查验/女巫用药）仅终局后公开，对局中仅法官视角可见
     events: state.events
@@ -675,7 +677,9 @@ export function getPlayerView(state: GameState, playerId: string | null, isJudge
       view.witchCanSave = witchInfo.canSave && !state.witchTonight;
       view.witchNightStatus = witchInfo.status;
       view.nightVictim = witchInfo.victimName;
-      view.nightVictimSeatNumber = state.nightVictim ? getSeatNumber(state, state.nightVictim) : null;
+      // 仅“已知刀口且解药未用”时暴露座位号；自己被刀/解药用完均不泄露刀口
+      view.nightVictimSeatNumber =
+        witchInfo.status === 'known_victim' && state.nightVictim ? getSeatNumber(state, state.nightVictim) : null;
     }
   }
   if (me?.role === 'hunter' && !finished) {

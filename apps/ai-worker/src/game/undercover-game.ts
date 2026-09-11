@@ -129,14 +129,27 @@ export class UndercoverGame extends BaseGameEngine {
     if (state.phase === 'result') return false;
 
     if (state.phase === 'describing') {
+      // 第二阶段：真正调用大模型
+      if (state.typingPlayerId) {
+        const pendingId = state.typingPlayerId;
+        state.typingPlayerId = null;
+        const p = state.players.find((x) => x.playerId === pendingId);
+        if (p && this.isAi(p.playerId) && !p.hasDescribed) {
+          await this.speakForDescription(p);
+          return true;
+        }
+      }
       const speaker = currentSpeaker(state);
       if (!speaker) {
         startVoting(state);
         return true;
       }
       if (!this.isAi(speaker.playerId)) return false;
-      const speech = await this.generateAiDescription(speaker);
-      applyDescription(state, speaker.playerId, speech);
+      if (this.speechProvider) {
+        state.typingPlayerId = speaker.playerId;
+        return true;
+      }
+      applyDescription(state, speaker.playerId, generateUndercoverDescription(state, speaker));
       return true;
     }
 
@@ -155,9 +168,11 @@ export class UndercoverGame extends BaseGameEngine {
     return true;
   }
 
-  private async generateAiDescription(player: UndercoverGameState['players'][number]): Promise<string> {
-    const fallback = generateUndercoverDescription(this.state, player);
-    if (!this.speechProvider) return fallback;
+  private async speakForDescription(player: UndercoverGameState['players'][number]): Promise<void> {
+    if (!this.speechProvider) {
+      applyDescription(this.state, player.playerId, generateUndercoverDescription(this.state, player));
+      return;
+    }
 
     const recentEvents = [
       ...this.state.publicNotes.slice(-2).map((note) => note.content),
@@ -180,9 +195,15 @@ export class UndercoverGame extends BaseGameEngine {
       phase: '描述阶段',
       round: this.state.round,
       recentEvents,
-      timeoutMs: 18_000,
+      timeoutMs: 15_000,
       customHint,
     });
-    return llmSpeech ?? fallback;
+
+    if (llmSpeech && llmSpeech.trim().length >= 2) {
+      applyDescription(this.state, player.playerId, llmSpeech);
+    } else {
+      // 没发言就保持沉默
+      applyDescriptionSkip(this.state, player.playerId);
+    }
   }
 }

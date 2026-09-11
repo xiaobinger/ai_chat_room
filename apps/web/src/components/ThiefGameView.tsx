@@ -11,6 +11,7 @@ import {
   SpeechInput,
   StageVeil,
   Timeline,
+  TypingIndicator,
   VoteGrid,
   WinnerBanner,
   type ActFn,
@@ -57,6 +58,7 @@ interface ThiefViewState extends GameViewState {
   myPersona?: string;
   publicNotes?: { round: number; content: string }[];
   voteStatus?: Record<string, 'voted' | 'abstained'>;
+  typingPlayerId?: string | null;
 }
 
 export function ThiefGameView({
@@ -278,6 +280,7 @@ export function ThiefGameView({
                 <span>{s.content}</span>
               </div>
             ))}
+            <TypingIndicator players={view.players} typingPlayerId={view.typingPlayerId} />
           </div>
         </div>
       )}

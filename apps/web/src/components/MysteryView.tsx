@@ -9,6 +9,7 @@ import {
   SpeechInput,
   StageVeil,
   Timeline,
+  TypingIndicator,
   VoteGrid,
   WinnerBanner,
   type ActFn,
@@ -47,6 +48,7 @@ interface MysteryViewState extends GameViewState {
   totalClueCount?: number;
   discussionLog?: { playerId: string; playerName: string; characterName: string; content: string; type: string }[];
   voteStatus?: Record<string, 'voted' | 'abstained'>;
+  typingPlayerId?: string | null;
 }
 
 const MYSTERY_PHASE_LABELS: Record<string, string> = {
@@ -332,6 +334,7 @@ export function MysteryView({
                 <span>{entry.content}</span>
               </div>
             ))}
+            <TypingIndicator players={view.players} typingPlayerId={view.typingPlayerId} />
           </div>
         </div>
       )}

@@ -435,35 +435,25 @@ export class WerewolfGame extends BaseGameEngine {
     const state = this.state;
     const alive = getAlivePlayers(state);
 
+    // 第二阶段：上一轮已标记“正在输入”的 AI，此刻真正调用大模型
+    if (state.typingPlayerId) {
+      const pendingId = state.typingPlayerId;
+      state.typingPlayerId = null;
+      const p = state.players.find((x) => x.playerId === pendingId);
+      if (p && this.isAi(p.playerId) && !state.speechStatus[p.playerId]) {
+        await this.speakForDay(p);
+        return true;
+      }
+    }
+
     for (const p of alive) {
       if (this.isAi(p.playerId) && !state.speechStatus[p.playerId]) {
-        let speech = generateDaySpeech({ state, aiPlayer: p });
-
-        // 尝试 LLM 动态生成（带超时保护，失败回退模板）
         if (this.speechProvider) {
-          const recentEvents = state.dayMessages.slice(-5).map((m) => `${m.nickname}: ${m.content}`);
-          try {
-            const llmSpeech = await Promise.race([
-              generateLlmSpeech(this.speechProvider, {
-                game: 'werewolf',
-                nickname: p.nickname,
-                gameRole: WEREWOLF_ROLE_LABELS[p.role] ?? p.role,
-                personality: getRolePersonality(p.role),
-                phase: '白天讨论',
-                round: state.round,
-                recentEvents,
-                timeoutMs: 20_000,
-                customHint: p.role === 'werewolf' ? '你是狼人，要伪装成好人，误导投票方向。' : undefined,
-              }),
-              new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 20_000)),
-            ]);
-            if (llmSpeech) speech = llmSpeech;
-          } catch {
-            // LLM 失败，使用模板
-          }
+          // 先标记“正在输入”，由导演广播后下一步再真正生成，避免前端等待大模型时无反馈
+          state.typingPlayerId = p.playerId;
+          return true;
         }
-
-        applyDaySpeak(state, p.playerId, speech);
+        applyDaySpeak(state, p.playerId, generateDaySpeech({ state, aiPlayer: p }));
         return true;
       }
     }
@@ -473,6 +463,29 @@ export class WerewolfGame extends BaseGameEngine {
     this.lastBroadcast = null;
     startVotePhase(state);
     return true;
+  }
+
+  /** 为单个 AI 生成白天发言：大模型成功则发言，超时/空响应/出错则保持沉默 */
+  private async speakForDay(p: PlayerState): Promise<void> {
+    const state = this.state;
+    const recentEvents = state.dayMessages.slice(-5).map((m) => `${m.nickname}: ${m.content}`);
+    const speech = await generateLlmSpeech(this.speechProvider!, {
+      game: 'werewolf',
+      nickname: p.nickname,
+      gameRole: WEREWOLF_ROLE_LABELS[p.role] ?? p.role,
+      personality: getRolePersonality(p.role),
+      phase: '白天讨论',
+      round: state.round,
+      recentEvents,
+      timeoutMs: 15_000,
+      customHint: p.role === 'werewolf' ? '你是狼人，要伪装成好人，误导投票方向。' : undefined,
+    });
+    if (speech && speech.trim().length >= 2) {
+      applyDaySpeak(state, p.playerId, speech);
+    } else {
+      // 没发言就保持沉默
+      applyDaySkip(state, p.playerId);
+    }
   }
 
   private stepVote(): boolean {

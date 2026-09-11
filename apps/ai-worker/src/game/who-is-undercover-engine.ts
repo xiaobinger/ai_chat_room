@@ -575,6 +575,7 @@ export function getUndercoverView(state: UndercoverGameState, playerId: string |
     order: state.order,
     orderCursor: state.orderCursor,
     currentSpeakerId: currentSpeaker(state)?.playerId ?? null,
+    typingPlayerId: state.typingPlayerId ?? null,
     voteStatus: state.voteStatus,
     votes: state.phase === 'voting' ? {} : state.votes,
     eliminatedThisRound: state.eliminatedThisRound,

@@ -234,6 +234,15 @@ PM2 配置在 `ecosystem.config.cjs`（双进程：`tianma-api` + `tianma-worker
 - **座位号基础设施**：狼人杀玩家视角与法官视角统一下发 `seatNumber`，前端玩家卡片、目标选择和女巫夜晚提示统一展示“几号玩家”，为后续语音法官、镜头跟随和 3D 座位布局提供稳定锚点
 - **AI 回归测试**：`apps/ai-worker/src/__tests__/games.test.ts` 已覆盖狼人优先刀跳预言家、预言家优先查对跳、女巫被刀优先自救、平民在预言家对跳时优先投对跳位
 
+### 游戏推进与 AI 发言收口（2026-09-11）
+
+- **推进循环必须 `await step()`**：`GameDirector.tick()` 里 `step()` 是 async 的，必须先 `await` 再判断是否可继续；未 `await` 会让循环在大模型发言期间空转、同一 AI 并发重复调模型、广播旧状态。今后任何把 `step()` 改成异步的行为都要同步检查导演循环
+- **先推进引擎、再看待行动人类**：导演循环改为"先 `step()`（法官播报 + AI 行动）→ 有推进则持久化广播后继续 → 无推进才查 `pendingHumans()`"。这样主持词（尤其女巫报号）会在人类被提示前送达
+- **AI 发言两阶段生成（正在输入）**：四套游戏状态统一新增 `typingPlayerId`，第一步只标记"正在输入"并广播让前端展示过渡，第二步才真正调用大模型；前端 `TypingIndicator` 用跳动圆点提示"X 正在输入"
+- **LLM 超时 / 空响应 / 出错 → 保持沉默**：`werewolf-game.ts`、`mystery-game.ts`、`thief-game.ts`、`undercover-game.ts` 在大模型拿不到可用发言时调用各自的 `applyXxxSkip`/`skipDiscussion`，不再回退到随机规则模板，避免 AI"前后矛盾、逻辑不通"
+- **游戏发言提示词**：`speech-generator.ts` 系统提示词要求"只用简体中文输出""立场前后一致""不暴露不该知道的信息"；游戏发言超时统一收紧到 15s（独白仍 30s）
+- **女巫报号防泄露**：`getPlayerView()` 只在"解药未用且已知刀口"时下发 `nightVictimSeatNumber`，自己被杀（不报号）或解药用完后一律为 null
+
 ## 已知未完成
 
 - 剧本杀游戏：更完整的复盘页、观察记录与悄悄话前端展示仍待补齐

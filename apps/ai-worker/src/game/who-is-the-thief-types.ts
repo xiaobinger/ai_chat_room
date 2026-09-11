@@ -71,6 +71,8 @@ export interface ThiefGameState {
   masterThiefEscapeUsed: boolean;
   /** 全员可见的局势记忆 */
   publicNotes: ThiefPublicNote[];
+  /** 正在调用大模型生成发言的 AI 玩家（前端显示“正在输入”过渡） */
+  typingPlayerId?: string | null;
   events: ThiefGameEvent[];
 }
 

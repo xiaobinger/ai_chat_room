@@ -158,6 +158,8 @@ describe('谁是卧底', () => {
       speechProvider: gameSpeechProvider('这轮我先从使用场景来描述，别把话说得太满。'),
     });
 
+    // 两步：第一步标记“正在输入”，第二步真正调用大模型
+    await game.step();
     await game.step();
 
     const state = game.getState() as { descriptions: { content: string }[] };
@@ -592,17 +594,22 @@ describe('谁是小偷', () => {
     expect(decideThiefVote(state as never, voter as never).targetId).toBe(target.playerId);
   });
 
-  it('speechProvider 失败时会回退到规则发言，不阻塞调查阶段', async () => {
+  it('speechProvider 失败时 AI 保持沉默，不阻塞调查阶段', async () => {
     const game = new ThiefGame(aiPlayers(5), undefined, {
       speechProvider: gameSpeechProvider('不会被使用', true),
     });
 
+    // 两步：第一步标记“正在输入”，第二步真正调用大模型（失败）→ 保持沉默
+    await game.step();
     await game.step();
 
-    const state = game.getState() as { speechLog: { content: string }[] };
-    expect(state.speechLog.length).toBe(1);
-    expect(state.speechLog[0]?.content.length).toBeGreaterThan(0);
-    expect(state.speechLog[0]?.content).not.toBe('不会被使用');
+    const state = game.getState() as {
+      speechLog: { content: string }[];
+      players: { hasSpoken: boolean }[];
+    };
+    // 失败不产出任何发言（保持沉默），但已标记该 AI 发言完毕，流程不阻塞
+    expect(state.speechLog.length).toBe(0);
+    expect(state.players.some((p) => p.hasSpoken)).toBe(true);
   });
 });
 

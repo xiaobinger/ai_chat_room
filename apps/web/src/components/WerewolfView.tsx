@@ -13,6 +13,7 @@ import {
   VoteGrid,
   WinnerBanner,
   InfoBlock,
+  TypingIndicator,
   type ActFn,
   type GamePlayerView,
   type GameViewState,
@@ -65,6 +66,7 @@ interface WerewolfViewState extends GameViewState {
   deadToday?: string[];
   finalSpeeches?: Record<string, string>;
   finalSpeechStatus?: Record<string, 'spoken' | 'skipped'>;
+  typingPlayerId?: string | null;
   // 法官视角下的完整秘密
   wolfVotes?: Record<string, string>;
   witchTonight?: 'save' | 'poison' | 'pass' | undefined;
@@ -461,7 +463,8 @@ export function WerewolfView({
                 <span>{m.content}</span>
               </div>
             ))}
-            {(!view.dayMessages || view.dayMessages.length === 0) && <p className="hint">还没有人发言。</p>}
+            <TypingIndicator players={view.players} typingPlayerId={view.typingPlayerId} />
+            {(!view.dayMessages || view.dayMessages.length === 0) && !view.typingPlayerId && <p className="hint">还没有人发言。</p>}
           </div>
         </div>
       )}

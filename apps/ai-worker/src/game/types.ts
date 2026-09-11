@@ -67,6 +67,8 @@ export interface GameState {
   /** 白天发言状态 */
   speechStatus: Record<string, 'spoken' | 'skipped'>;
   dayMessages: DayMessage[];
+  /** 正在调用大模型生成发言的 AI 玩家（前端显示“正在输入”过渡） */
+  typingPlayerId?: string | null;
   /** 投票状态 */
   voteStatus: Record<string, 'voted' | 'abstained'>;
   votes: Record<string, string>;

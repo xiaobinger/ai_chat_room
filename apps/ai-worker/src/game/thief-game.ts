@@ -148,11 +148,25 @@ export class ThiefGame extends BaseGameEngine {
     const state = this.state;
     const alive = getAlivePlayers(state);
 
+    // 第二阶段：真正调用大模型
+    if (state.typingPlayerId) {
+      const pendingId = state.typingPlayerId;
+      state.typingPlayerId = null;
+      const p = state.players.find((x) => x.playerId === pendingId);
+      if (p && this.isAi(p.playerId) && !p.hasSpoken) {
+        await this.speakFor(p);
+        return true;
+      }
+    }
+
     // 1. AI 依次发言
     for (const p of alive) {
       if (this.isAi(p.playerId) && !p.hasSpoken) {
-        const speech = await this.generateAiInvestigationSpeech(p);
-        applyThiefSpeech(state, p.playerId, speech);
+        if (this.speechProvider) {
+          state.typingPlayerId = p.playerId;
+          return true;
+        }
+        applyThiefSpeech(state, p.playerId, generateInvestigationSpeech(state, p));
         return true;
       }
     }
@@ -210,9 +224,11 @@ export class ThiefGame extends BaseGameEngine {
     return true;
   }
 
-  private async generateAiInvestigationSpeech(player: ThiefPlayerState): Promise<string> {
-    const fallback = generateInvestigationSpeech(this.state, player);
-    if (!this.speechProvider) return fallback;
+  private async speakFor(player: ThiefPlayerState): Promise<void> {
+    if (!this.speechProvider) {
+      applyThiefSpeech(this.state, player.playerId, generateInvestigationSpeech(this.state, player));
+      return;
+    }
 
     const recentEvents = [
       ...this.state.publicNotes.slice(-2).map((note) => note.content),
@@ -237,10 +253,16 @@ export class ThiefGame extends BaseGameEngine {
       phase: '调查发言',
       round: this.state.round,
       recentEvents,
-      timeoutMs: 18_000,
+      timeoutMs: 15_000,
       customHint: customHints[player.role],
     });
-    return llmSpeech ?? fallback;
+
+    if (llmSpeech && llmSpeech.trim().length >= 2) {
+      applyThiefSpeech(this.state, player.playerId, llmSpeech);
+    } else {
+      // 没发言就保持沉默
+      applyThiefSkip(this.state, player.playerId);
+    }
   }
 }
 

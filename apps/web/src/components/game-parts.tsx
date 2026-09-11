@@ -40,6 +40,8 @@ export interface GameViewState {
   myRole?: string;
   myWord?: string;
   winner?: string;
+  /** 正在调用大模型生成发言的 AI 玩家 id */
+  typingPlayerId?: string | null;
   [key: string]: unknown;
 }
 
@@ -531,5 +533,29 @@ export function PlayerCount({ players }: { players: GamePlayerView[] }) {
       <Users size={14} />
       {alive}/{players.length} 存活
     </span>
+  );
+}
+
+// ===== 正在输入过渡 =====
+
+export function TypingIndicator({
+  players,
+  typingPlayerId,
+}: {
+  players: GamePlayerView[];
+  typingPlayerId?: string | null;
+}) {
+  if (!typingPlayerId) return null;
+  const player = players.find((p) => p.playerId === typingPlayerId);
+  return (
+    <div className="day-message typing">
+      <b>{player?.nickname ?? '…'}：</b>
+      <span className="typing-dots">
+        <i />
+        <i />
+        <i />
+        <small>正在输入</small>
+      </span>
+    </div>
   );
 }

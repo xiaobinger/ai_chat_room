@@ -230,6 +230,15 @@ export class GameDirector {
           await this.finish();
           return;
         }
+        // 先推进引擎（法官播报 + AI 行动），再判断是否有待行动的人类：
+        // 这样主持人播报（如女巫报号）会在人类被提示前送达，AI 行动也不会因人类待行动而冻结。
+        const moved = await this.engine.step();
+        if (moved) {
+          await this.persist();
+          this.broadcastState();
+          await sleep(STEP_DELAY_MS);
+          continue;
+        }
         const pending = this.engine.pendingHumans();
         if (pending.length > 0) {
           this.armDeadline();
@@ -237,16 +246,10 @@ export class GameDirector {
           this.broadcastState();
           return;
         }
-        const moved = this.engine.step();
-        if (!moved) {
-          // 防御：无人类待行动且引擎无法推进，避免死循环；仍广播最新状态，保证前端不静默卡死
-          await this.persist();
-          this.broadcastState();
-          return;
-        }
+        // 防御：无人类待行动且引擎无法推进，避免死循环；仍广播最新状态，保证前端不静默卡死
         await this.persist();
         this.broadcastState();
-        await sleep(STEP_DELAY_MS);
+        return;
       }
     } finally {
       this.ticking = false;

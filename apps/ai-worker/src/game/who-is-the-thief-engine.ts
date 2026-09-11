@@ -700,6 +700,7 @@ export function getThiefView(state: ThiefGameState, playerId: string | null) {
     speechLog: state.speechLog,
     myNotes: playerId ? state.privateNotes[playerId] ?? [] : [],
     publicNotes: state.publicNotes,
+    typingPlayerId: state.typingPlayerId ?? null,
     voteStatus: state.voteStatus,
     votes: state.phase === 'voting' ? {} : state.votes,
     accusedPlayerId: state.accusedPlayerId,

@@ -704,6 +704,26 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 - `pnpm test`：全仓测试通过
 - `pnpm lint`：0 errors，保留既有 `console` warnings
 
+## 2026-09-11：游戏推进并发修复 + AI 发言过渡与超时沉默
+
+### 关键事件
+- **修复导演推进循环未 await `step()` 的并发 bug**：`GameDirector.tick()` 里 `this.engine.step()` 在 `step()` 改为 async 后没有被 `await`，导致大模型发言期间循环空转、同一 AI 并发重复调模型、广播的都是旧状态——这正是"AI 像卡住 + 发言前后矛盾"的根因之一。改为 `await` 并调整为先推进引擎（法官播报 + AI 行动）再判断待行动人类，让女巫报号等主持词在人类被提示前送达。
+- **AI 发言过渡（正在输入）**：四个游戏统一增加 `typingPlayerId` 两阶段生成——先标记"正在输入"并广播，下一步再真正调用大模型；前端 `TypingIndicator` 用跳动圆点 + "正在输入"提示过渡，消除等待时"卡死"观感。
+- **LLM 超时保持沉默**：大模型超时 / 空响应 / 出错时，AI 不再回退到随机规则模板（正是"前后矛盾、逻辑不通"的第二来源），而是直接保持沉默跳过本轮发言。
+- **发言提示词中文化 + 一致性约束**：`speech-generator.ts` 系统提示词增加"只用简体中文输出"与"立场前后一致、不暴露不该知道的信息"，避免英文输出与自相矛盾。
+- **女巫刀口泄露封堵**：`getPlayerView()` 仅在"解药未用且已知刀口"时下发 `nightVictimSeatNumber`，自己被刀 / 解药用完一律不泄露座位号。
+
+### 技术细节
+- 后端：`apps/api/src/game/game-director.ts`、`apps/ai-worker/src/game/{werewolf-game,werewolf-engine,mystery-game,thief-game,undercover-game,speech-generator,types,mystery-types,who-is-the-thief-types,who-is-undercover-types}.ts`
+- 前端：`apps/web/src/components/{game-parts,WerewolfView,MysteryView,ThiefGameView,UndercoverView}.tsx`、`apps/web/src/styles/app.css`
+- 状态字段：四套游戏状态均新增可选 `typingPlayerId`（旧存档缺省为 undefined，向后兼容）
+- 回归测试：`games.test.ts` 适配两阶段生成，并把"provider 失败回退模板"改为"失败保持沉默"的断言
+
+### 验证
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：全仓 228 测试全绿（ai-core 78 + queue 22 + ai-worker 97 + api 31）
+- `pnpm lint`：0 errors，仅保留既有 `console.log` warnings
+
 ## 经验教训
 1. Windows 环境下工作区路径处理需要特别小心，`\\?\` 前缀会导致 CMD 和部分 Node 工具异常
 2. 后台进程管理在受限沙箱中不可靠，优先让用户本地终端常驻服务

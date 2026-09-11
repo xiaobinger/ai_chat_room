@@ -271,12 +271,26 @@ export class MysteryGame extends BaseGameEngine {
     if (state.phase === 'reveal') return false;
     const alive = getAlivePlayers(state);
 
+    // 第二阶段：真正调用大模型生成发言
+    if (state.typingPlayerId) {
+      const pendingId = state.typingPlayerId;
+      state.typingPlayerId = null;
+      const p = state.players.find((x) => x.playerId === pendingId);
+      if (p && this.isAi(p.playerId) && !p.hasSpoken && this.isSpeechPhase(state.phase)) {
+        await this.speakFor(p, state.phase);
+        return true;
+      }
+    }
+
     switch (state.phase) {
       case 'introduction': {
         for (const p of alive) {
           if (this.isAi(p.playerId) && !p.hasSpoken) {
-            const speech = await this.generateAiSpeech(p, 'introduction');
-            this.state = addDiscussion(state, p.playerId, speech, 'statement');
+            if (this.speechProvider) {
+              this.state.typingPlayerId = p.playerId;
+              return true;
+            }
+            this.state = addDiscussion(state, p.playerId, generateMysterySpeech(this.state, p, 'introduction'), 'statement');
             return true;
           }
         }
@@ -308,8 +322,11 @@ export class MysteryGame extends BaseGameEngine {
         this.generateSecretChat();
         for (const p of alive) {
           if (this.isAi(p.playerId) && !p.hasSpoken) {
-            const speech = await this.generateAiSpeech(p, 'discussion');
-            this.state = addDiscussion(state, p.playerId, speech, 'statement');
+            if (this.speechProvider) {
+              this.state.typingPlayerId = p.playerId;
+              return true;
+            }
+            this.state = addDiscussion(state, p.playerId, generateMysterySpeech(this.state, p, 'discussion'), 'statement');
             return true;
           }
         }
@@ -323,8 +340,11 @@ export class MysteryGame extends BaseGameEngine {
       case 'accusation': {
         for (const p of alive) {
           if (this.isAi(p.playerId) && !p.hasSpoken) {
-            const speech = await this.generateAiSpeech(p, 'accusation');
-            this.state = addDiscussion(state, p.playerId, speech, 'accusation');
+            if (this.speechProvider) {
+              this.state.typingPlayerId = p.playerId;
+              return true;
+            }
+            this.state = addDiscussion(state, p.playerId, generateMysterySpeech(this.state, p, 'accusation'), 'accusation');
             return true;
           }
         }
@@ -351,12 +371,16 @@ export class MysteryGame extends BaseGameEngine {
     }
   }
 
-  private async generateAiSpeech(
-    player: MysteryPlayerState,
-    type: 'introduction' | 'discussion' | 'accusation',
-  ): Promise<string> {
-    const fallback = generateMysterySpeech(this.state, player, type);
-    if (!this.speechProvider) return fallback;
+  private isSpeechPhase(phase: MysteryGameState['phase']): phase is 'introduction' | 'discussion' | 'accusation' {
+    return phase === 'introduction' || phase === 'discussion' || phase === 'accusation';
+  }
+
+  /** 为单个 AI 生成发言：大模型成功则发言，超时/空响应/出错则保持沉默 */
+  private async speakFor(player: MysteryPlayerState, type: 'introduction' | 'discussion' | 'accusation'): Promise<void> {
+    if (!this.speechProvider) {
+      this.state = addDiscussion(this.state, player.playerId, generateMysterySpeech(this.state, player, type), type === 'accusation' ? 'accusation' : 'statement');
+      return;
+    }
 
     const recentEvents = [
       ...this.state.publicNotes.slice(-2).map((note) => note.content),
@@ -380,10 +404,16 @@ export class MysteryGame extends BaseGameEngine {
       phase: phaseLabel,
       round: this.state.round,
       recentEvents,
-      timeoutMs: 20_000,
+      timeoutMs: 15_000,
       customHint,
     });
-    return llmSpeech ?? fallback;
+
+    if (llmSpeech && llmSpeech.trim().length >= 2) {
+      this.state = addDiscussion(this.state, player.playerId, llmSpeech, type === 'accusation' ? 'accusation' : 'statement');
+    } else {
+      // 没发言就保持沉默
+      this.state = skipDiscussion(this.state, player.playerId);
+    }
   }
 
   private transition(phase: MysteryGameState['phase'], message: string): void {

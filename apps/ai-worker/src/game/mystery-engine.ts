@@ -722,6 +722,7 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
       discoveredClues: state.clues.filter((c) => state.discoveredClues.includes(c.id)),
       discussionLog: state.discussionLog,
       publicNotes: state.publicNotes,
+      typingPlayerId: state.typingPlayerId ?? null,
       voteStatus: state.voteStatus,
       votes: state.phase === 'voting' ? {} : state.votes,
       players: state.players.map((p) => ({
@@ -753,6 +754,7 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
     totalClueCount: state.clues.length,
     discussionLog: state.discussionLog,
     publicNotes: state.publicNotes,
+    typingPlayerId: state.typingPlayerId ?? null,
     voteStatus: state.voteStatus,
     votes: state.phase === 'voting' ? {} : state.votes,
     players: state.players.map((p) => ({

@@ -11,6 +11,7 @@ import {
   SpeechInput,
   StageVeil,
   Timeline,
+  TypingIndicator,
   VoteGrid,
   WinnerBanner,
   type ActFn,
@@ -24,6 +25,7 @@ interface UndercoverViewState extends GameViewState {
   currentSpeakerId?: string | null;
   publicNotes?: { round: number; content: string }[];
   voteStatus?: Record<string, 'voted' | 'abstained'>;
+  typingPlayerId?: string | null;
   civilianWord?: string;
   undercoverWord?: string;
 }
@@ -214,6 +216,9 @@ export function UndercoverView({
                 <span>{d.content}</span>
               </div>
             ))}
+            {view.phase === 'describing' && (
+              <TypingIndicator players={view.players} typingPlayerId={view.typingPlayerId} />
+            )}
           </div>
         </div>
       )}

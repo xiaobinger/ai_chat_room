@@ -83,6 +83,8 @@ export interface MysteryGameState {
   clues: ClueCard[];
   discoveredClues: string[];         // 已发现的线索 id
   discussionLog: DiscussionEntry[];
+  /** 正在调用大模型生成发言的 AI 玩家（前端显示“正在输入”过渡） */
+  typingPlayerId?: string | null;
   votes: Record<string, string>;      // voterId -> targetId
   voteStatus: Record<string, 'voted' | 'abstained'>;
   accusedMurdererId?: string;         // 被指控的凶手
