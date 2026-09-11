@@ -621,7 +621,7 @@ describe('谁是小偷', () => {
       isAi: true,
     }));
     const game = new ThiefGame(players);
-    const state = game.getState() as ThiefGameState;
+    const state = game.getState() as unknown as ThiefGameState;
     const detective = state.players.find((p) => p.role === 'detective')!;
     const thief = state.players.find((p) => state.thiefTeamIds.includes(p.playerId) && p.role === 'thief')!;
 

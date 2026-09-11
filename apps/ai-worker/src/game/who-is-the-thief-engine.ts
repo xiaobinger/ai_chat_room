@@ -252,7 +252,8 @@ export function applyDetectiveInvestigate(state: ThiefGameState, detectiveId: st
   const note = `第 ${state.round} 轮调查：${target.nickname} ${isThief ? '就是小偷！' : '不是小偷。'}`;
   if (!state.privateNotes[detectiveId]) state.privateNotes[detectiveId] = [];
   state.privateNotes[detectiveId].push(note);
-  logEvent(state, 'player_action', `侦探 ${detective.nickname} 调查了 ${target.nickname}（结果只有侦探知道）`, detective.nickname, target.nickname);
+  // 调查动作匿名化：只写结果到私密笔记，不公开侦探身份与调查对象
+  logEvent(state, 'player_action', '有人暗中调查了一名玩家，调查结果只有本人可见。');
 }
 
 /** 小偷嫁祸（悄悄增加目标嫌疑，只有小偷知道） */

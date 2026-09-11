@@ -274,7 +274,8 @@ export function resolveUndercoverVote(state: UndercoverGameState): void {
     logEvent(state, 'vote_result', `平票，本轮无人出局（连续僵局第 ${state.consecutiveTies} 轮）`);
     if (state.consecutiveTies >= 3) {
       resolveTiebreak(state);
-      return;
+      // 不在这里 return：强制淘汰后仍需走统一的「胜负判定 + 进入下一轮」收尾，
+      // 否则会停留在 voting 阶段、重复结算同一批 stale 票
     }
   } else {
     state.consecutiveTies = 0;

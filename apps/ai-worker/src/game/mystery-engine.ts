@@ -735,7 +735,8 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
         suspicionLevel: p.suspicionLevel,
       })),
       winner: state.winner,
-      events: state.events,
+      // 观众视角：隐藏仅警察可见的观察记录（visibleTo 限定的侦探/警察推理）
+      events: state.events.filter((e) => !e.visibleTo),
     };
   }
 
@@ -778,6 +779,9 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
     murdererId: finished ? state.murdererId : undefined,
     accusedMurdererId: state.accusedMurdererId,
     winner: state.winner,
-    events: state.events,
+    // 警察观察记录仅警察本人与终局可见，其余玩家过滤掉（防泄露警察身份与推理）
+    events: finished
+      ? state.events
+      : state.events.filter((e) => !e.visibleTo || e.visibleTo.includes(playerId ?? '')),
   };
 }
