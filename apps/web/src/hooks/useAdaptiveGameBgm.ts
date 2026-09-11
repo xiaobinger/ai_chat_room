@@ -31,6 +31,8 @@ interface AudioEngine {
 
 const ENABLED_KEY = 'game-bgm-enabled';
 const VOLUME_KEY = 'game-bgm-volume';
+/** 各 profile 的 masterGain 偏保守，全局再乘一个增益系数，避免整段音乐听不清 */
+const GLOBAL_GAIN_BOOST = 5;
 
 function readStoredBoolean(key: string, fallback: boolean): boolean {
   if (typeof window === 'undefined') return fallback;
@@ -376,7 +378,7 @@ function createAmbientEngine(ctx: AudioContext, profile: BgmProfile, volumePerce
   const pulseBus = ctx.createGain();
   const droneBus = ctx.createGain();
   const shimmerBus = ctx.createGain();
-  const masterVolume = (volumePercent / 100) * profile.masterGain;
+  const masterVolume = (volumePercent / 100) * profile.masterGain * GLOBAL_GAIN_BOOST;
 
   filter.type = 'lowpass';
   filter.frequency.value = profile.filterFrequency;
@@ -493,7 +495,7 @@ function createAmbientEngine(ctx: AudioContext, profile: BgmProfile, volumePerce
       }, 520);
     },
     setVolume: (volumePercentNext: number) => {
-      const next = (volumePercentNext / 100) * profile.masterGain;
+      const next = (volumePercentNext / 100) * profile.masterGain * GLOBAL_GAIN_BOOST;
       master.gain.cancelScheduledValues(ctx.currentTime);
       master.gain.linearRampToValueAtTime(next, ctx.currentTime + 0.18);
     },
@@ -502,7 +504,7 @@ function createAmbientEngine(ctx: AudioContext, profile: BgmProfile, volumePerce
 
 export function useAdaptiveGameBgm(input: GamePhaseInput) {
   const [enabled, setEnabled] = useState(() => readStoredBoolean(ENABLED_KEY, true));
-  const [volume, setVolume] = useState(() => Math.min(100, Math.max(0, readStoredNumber(VOLUME_KEY, 42))));
+  const [volume, setVolume] = useState(() => Math.min(100, Math.max(0, readStoredNumber(VOLUME_KEY, 60))));
   const [unlocked, setUnlocked] = useState(false);
   const [supported] = useState(() => typeof window !== 'undefined' && (window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext));
 
