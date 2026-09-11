@@ -30,6 +30,7 @@ export interface CharacterCard {
   backstory: string;     // 背景故事
   secret: string;        // 秘密（仅自己可见）
   isMurderer: boolean;   // 是否为凶手
+  isAccomplice?: boolean; // 是否为凶手帮凶（掩护凶手、搅乱调查，被投出时会被揭穿但游戏不结束）
   isPolice?: boolean;    // 是否为本案负责调查的警察/侦探
   isCorrupt?: boolean;   // 警察是否与凶手勾结（仅 isPolice 时有意义）
   alibi: string;         // 不在场证明
@@ -46,6 +47,14 @@ export interface ClueCard {
   revealsInfo: string;   // 揭示的信息
   isKey: boolean;        // 是否为关键线索
   discoveredBy?: string; // 发现者 playerId
+  /** 证据链环节：关键线索各占一环，集齐才能形成完整证据链 */
+  chainStep?: 'means' | 'opportunity' | 'motive' | 'trace';
+  /** 凶手伪造的误导线索：表面指向无辜者，被鉴定揭穿前会计入嫌疑推理 */
+  isFabricated?: boolean;
+  /** 伪证已被技术鉴定揭穿（此后不再计入嫌疑推理） */
+  isFabricationExposed?: boolean;
+  /** 伪造线索表面指向的角色名（复盘用） */
+  fabricatedTo?: string;
 }
 
 export interface MysteryPlayerState {
@@ -58,6 +67,9 @@ export interface MysteryPlayerState {
   votes: number;
   suspicionLevel: number;  // 嫌疑值（越高越可疑）
   completedObjectives: string[];  // 已完成的任务描述
+  /** 中途彩蛋入场（NPC 玩家，剧本剩余角色空降） */
+  isLatecomer?: boolean;
+  joinedRound?: number;
 }
 
 export interface PlayerResult {
@@ -103,6 +115,18 @@ export interface MysteryGameState {
   monologue?: MurdererMonologue;
   /** 详细复盘（reveal 阶段生成） */
   replay?: DetailedReplay;
+  /** 当前冲突强度 0-100（0=无冲突，100=激烈扭打） */
+  conflictLevel: number;
+  /** 本轮发生的冲突事件列表 */
+  conflictEvents: ConflictEvent[];
+  /** 帮凶 playerId（本局可能不存在） */
+  accompliceId?: string;
+  /** 彩蛋入场角色池（剧本未被分配的剩余角色，可中途空降） */
+  latecomerPool: LatecomerProfile[];
+  /** 已触发的剧情反转列表 */
+  twists: PlotTwist[];
+  /** 时间线是否已被推翻（所有人的不在场证明需重新核实） */
+  timelineDisproved?: boolean;
 }
 
 export interface DiscussionEntry {
@@ -114,11 +138,51 @@ export interface DiscussionEntry {
   type: 'statement' | 'question' | 'accusation' | 'defense';
 }
 
+/** 冲突事件：玩家之间因任务/指控产生的肢体冲突 */
+export interface ConflictEvent {
+  id: string;
+  round: number;
+  phase: MysteryPhase;
+  /** 参与冲突的玩家 */
+  participants: { playerId: string; nickname: string; characterName: string }[];
+  /** 冲突强度 1-100（越高越激烈） */
+  intensity: number;
+  /** 冲突类型 */
+  action: 'shove' | 'grab' | 'fight' | 'shout' | 'threaten';
+  /** 冲突描述（如"张明远一把揪住李婉清的衣领"） */
+  description: string;
+  /** 冲突起因 */
+  trigger: string;
+  timestamp: number;
+}
+
+/** 剧情反转事件：分轮次触发，颠覆此前的推理共识 */
+export interface PlotTwist {
+  id: string;
+  round: number;
+  /** 反转类型：timeline=时间线推翻 fabricated_clue=伪证揭穿 identity=帮凶身份暴露 motive=动机反转 */
+  kind: 'timeline' | 'fabricated_clue' | 'identity' | 'motive';
+  /** 反转标题（如"尸检报告更新"） */
+  title: string;
+  /** 反转内容 */
+  content: string;
+  /** 被揭穿的伪证线索 id（仅 fabricated_clue） */
+  revealedClueId?: string;
+  timestamp: number;
+}
+
+/** 彩蛋入场角色档案：剧本中未被分配的角色，可在中途带着新线索空降对局 */
+export interface LatecomerProfile {
+  character: Omit<CharacterCard, 'id' | 'isMurderer' | 'isAccomplice' | 'isPolice' | 'isCorrupt'>;
+  /** 入场时带来的新线索（加入线索池供搜证） */
+  arrivalClue: Omit<ClueCard, 'id' | 'discoveredBy'>;
+}
+
 export interface MysteryGameEvent {
   id: string;
   round: number;
   phase: MysteryPhase;
-  type: 'phase_change' | 'clue_discovered' | 'player_action' | 'vote_result' | 'game_start' | 'game_end' | 'roleplay' | 'observation' | 'secret_chat' | 'monologue';
+  type: 'phase_change' | 'clue_discovered' | 'player_action' | 'vote_result' | 'game_start' | 'game_end' | 'roleplay' | 'observation' | 'secret_chat' | 'monologue' | 'conflict' | 'twist' | 'latecomer';
   actorName?: string;
   characterName?: string;
   content: string;

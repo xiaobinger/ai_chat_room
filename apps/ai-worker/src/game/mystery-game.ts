@@ -23,6 +23,32 @@ import {
 } from './mystery-engine';
 import { generateLlmSpeech } from './speech-generator';
 
+/** 解析 LLM 输出的凶手独白，按【标签】提取各段落 */
+function parseMonologueText(text: string, fallback: MurdererMonologue): MurdererMonologue {
+  const extract = (label: string) => {
+    // 匹配 【动机】xxx 或 【动机】 xxx 格式
+    const match = text.match(new RegExp(`【${label}】\\s*([^【]+)`));
+    return match ? match[1].trim() : '';
+  };
+  const motive = extract('动机') || fallback.motive;
+  const planning = extract('策划') || fallback.planning;
+  const execution = extract('作案') || fallback.execution;
+  const aftermath = extract('善后') || fallback.aftermath;
+  const finalWords = extract('遗言') || fallback.finalWords;
+  const emotion: MurdererMonologue['emotion'] =
+    murdererEmotionByPersonality(fallback.emotion, text);
+  return { motive, planning, execution, aftermath, finalWords, emotion };
+}
+
+function murdererEmotionByPersonality(initial: MurdererMonologue['emotion'], text: string): MurdererMonologue['emotion'] {
+  if (/悔过|忏悔|对不起|抱歉|罪有应得|我错了|我的错/.test(text)) return 'remorseful';
+  if (/不后悔|你们错了|我没错|挑衅|我从不后悔/.test(text)) return 'defiant';
+  if (/平静|淡定|无所谓|早有准备|冷静/.test(text)) return 'calm';
+  if (/怨恨|仇恨|报复|不甘心|积怨/.test(text)) return 'bitter';
+  if (/绝望|走投无路|被逼无奈|没办法/.test(text)) return 'desperate';
+  return initial;
+}
+
 const SPEECH_DEADLINE_MS = 60_000;
 const SEARCH_DEADLINE_MS = 45_000;
 const VOTE_DEADLINE_MS = 45_000;
@@ -34,9 +60,13 @@ function generateEpilogues(props: {
   weapon: string;
   caught: boolean;
   corruptPoliceName?: string;
+  accompliceName?: string;
+  accompliceAlive?: boolean;
+  latecomerName?: string;
+  twistCount: number;
   monologue?: { finalWords: string; emotion: string };
 }): string[] {
-  const { murdererName, victim, weapon, caught, corruptPoliceName } = props;
+  const { murdererName, victim, weapon, caught, corruptPoliceName, accompliceName, accompliceAlive, latecomerName, twistCount } = props;
 
   if (caught) {
     const endings = [
@@ -45,9 +75,25 @@ function generateEpilogues(props: {
       `【落幕】${murdererName}面对众人的指控，出人意料地露出了微笑："你们猜对了。"一切的谜团就此解开，${victim}的冤魂得以安息。`,
       `【破案】经过层层推理，所有证据都指向${murdererName}。在无可辩驳的事实面前，${murdererName}低下了头，轻声说道："${victim}……对不起。"`,
     ];
+    if (accompliceName) {
+      endings.push(
+        `【共犯落网】${murdererName}落网的同时，帮凶${accompliceName}也未能逃脱——正是TA在调查中一次次的"合理分析"，差点把所有人引向深渊。真相，从来不止一层。`,
+        `【连环反转】${murdererName}交代了全部罪行，也供出了同伙${accompliceName}。这场谋杀不是一个人的作案，而是一场精心编排的双簧——你们每推翻一次结论，都在TA们的剧本之内。`,
+      );
+    }
     if (corruptPoliceName) {
       endings.push(
         `【黑幕】不仅${murdererName}被绳之以法，警方内部的黑警${corruptPoliceName}也一并落网。原来这对"警匪"早已勾结，但最终还是难逃法网。`,
+      );
+    }
+    if (twistCount >= 2) {
+      endings.push(
+        `【抽丝剥茧】这起案件经历了${twistCount}次反转——时间线被推翻、伪证被揭穿、动机被动摇，但你们最终还是穿过了凶手布下的所有迷雾，把${murdererName}钉死在证据链的最后一环上。这才是真正的推理。`,
+      );
+    }
+    if (latecomerName) {
+      endings.push(
+        `【关键证词】值得一提的是，中途赶到${latecomerName}带来的线索，成为锁定${murdererName}的最后一块拼图。如果TA没有出现，这桩案子也许永远不会水落石出。`,
       );
     }
     return endings;
@@ -59,9 +105,19 @@ function generateEpilogues(props: {
     `【悬案】这起案件成了悬案，${murdererName}逍遥法外。直到三年后，一桩新的案件揭开了陈年的秘密……`,
     `【逃逸】${murdererName}利用众人争论的空档悄然离开。但天网恢恢，疏而不漏，${victim}的鬼魂似乎仍在注视着这一切……`,
   ];
+  if (accompliceName) {
+    endings.push(
+      `【完美共谋】${murdererName}逃脱了。而在人群里，帮凶${accompliceName}${accompliceAlive ? '始终没有人怀疑过' : '虽然曾被投出，却至死没有供出真凶'}。这场谋杀的最可怕之处在于：它从头到尾有两个人在执行。`,
+    );
+  }
   if (corruptPoliceName) {
     endings.push(
       `【勾结】${murdererName}在黑警${corruptPoliceName}的掩护下顺利脱身。但这条利益链条迟早会断裂，两人都逃不过命运的安排……`,
+    );
+  }
+  if (twistCount >= 2) {
+    endings.push(
+      `【迷雾终局】${twistCount}次反转耗尽了所有人的判断力——当真相被层层伪装包裹，坚持直觉反而成了最危险的选择。${murdererName}正是利用了这一点，笑着走出了最后的门。`,
     );
   }
   return endings;
@@ -106,7 +162,15 @@ export class MysteryGame extends BaseGameEngine {
     this.speechProvider = options?.speechProvider ?? null;
     if (state) {
       if (state.format !== 2) throw new GameError('unsupported_state', '旧版本游戏状态无法恢复');
-      this.state = state as unknown as MysteryGameState;
+      const restored = state as unknown as MysteryGameState;
+      // 跨版本恢复补全：新增的可选字段在旧存档中不存在，这里统一补默认值
+      this.state = {
+        ...restored,
+        twists: restored.twists ?? [],
+        latecomerPool: restored.latecomerPool ?? [],
+        conflictLevel: restored.conflictLevel ?? 0,
+        conflictEvents: restored.conflictEvents ?? [],
+      };
     } else {
       this.state = initMysteryState(players.map((p) => ({ playerId: p.playerId, nickname: p.nickname })));
     }
@@ -114,6 +178,12 @@ export class MysteryGame extends BaseGameEngine {
 
   getState(): Record<string, unknown> {
     return this.state as unknown as Record<string, unknown>;
+  }
+
+  /** 中途彩蛋入场的 NPC（npc- 前缀）不在房间玩家表里，但由引擎 AI 自动接管发言 */
+  protected isAi(playerId: string): boolean {
+    if (playerId.startsWith('npc-')) return true;
+    return super.isAi(playerId);
   }
 
   isFinished(): boolean {
@@ -125,15 +195,23 @@ export class MysteryGame extends BaseGameEngine {
     const winner = this.state.winner;
     const results: Record<string, { won: boolean; role: string }> = {};
     for (const p of this.state.players) {
-      results[p.playerId] = {
-        won: p.character.isMurderer ? winner === 'murderer' : winner === 'detectives',
-        role: p.character.isMurderer ? '凶手' : p.character.isPolice ? (p.character.isCorrupt ? '黑警' : '警察') : p.character.name,
-      };
+      if (p.character.isMurderer) {
+        results[p.playerId] = { won: winner === 'murderer', role: '凶手' };
+      } else if (p.character.isAccomplice) {
+        // 帮凶与凶手共生死：真凶逃脱则共谋得逞；帮凶曾被投出（已出局）也随真凶一同伏法
+        results[p.playerId] = { won: winner === 'murderer' && p.isAlive, role: '帮凶' };
+      } else if (p.character.isPolice) {
+        results[p.playerId] = { won: winner === 'detectives', role: p.character.isCorrupt ? '黑警' : '警察' };
+      } else {
+        results[p.playerId] = { won: winner === 'detectives', role: p.character.name };
+      }
     }
-    // 随机多结局：根据凶手是否被抓住 + 是否黑警 + 随机叙事风格生成不同结局
+    // 随机多结局：根据凶手是否被抓住 + 帮凶/黑警 + 反转次数 + 随机叙事风格生成不同结局
     if (this.state.phase === 'reveal') {
       const murderer = this.state.players.find((p) => p.character.isMurderer);
       const corruptPolice = this.state.players.find((p) => p.character.isPolice && p.character.isCorrupt);
+      const accomplice = this.state.players.find((p) => p.character.isAccomplice);
+      const latecomer = this.state.players.find((p) => p.isLatecomer);
       const caught = winner === 'detectives';
 
       const endings = generateEpilogues({
@@ -141,6 +219,10 @@ export class MysteryGame extends BaseGameEngine {
         victim: this.state.victim,
         weapon: this.state.murderWeapon,
         caught,
+        accompliceName: accomplice?.character.name,
+        accompliceAlive: accomplice?.isAlive,
+        latecomerName: latecomer?.character.name,
+        twistCount: this.state.twists.length,
         corruptPoliceName: corruptPolice?.character.name,
         monologue: this.state.monologue,
       });
@@ -364,6 +446,10 @@ export class MysteryGame extends BaseGameEngine {
         }
         if (alive.some((p) => !state.voteStatus[p.playerId])) return false;
         this.state = resolveMysteryVote(state);
+        // 进入真相揭晓阶段后，生成凶手独白（与玩家视角同步）
+        if (this.state.phase === 'reveal') {
+          await this.generateMonologue();
+        }
         return true;
       }
       default:
@@ -394,7 +480,9 @@ export class MysteryGame extends BaseGameEngine {
       type === 'introduction' ? '自我介绍' : type === 'discussion' ? '圆桌讨论' : '公开指控';
     const customHint = player.character.isMurderer
       ? `你是真正的凶手，要像真人一样自然回应，尽量引导怀疑去别人身上。`
-      : `你不是凶手，请结合自己的人设、线索和讨论内容，认真推动破案。`;
+      : player.character.isAccomplice
+        ? `你是凶手的帮凶（身份对其他人隐藏）。你要表现得像一个认真推理的好人，但你的目标是暗中把怀疑引向无辜者、为真凶解围。发言要自然可信，绝不能暴露你是帮凶。如果讨论中有人指向真凶，你要用"合情合理"的方式转移火力；如果证据链快连上，你要设法制造新的疑点。`
+        : `你不是凶手，请结合自己的人设、线索和讨论内容，认真推动破案。`;
 
     const llmSpeech = await generateLlmSpeech(this.speechProvider, {
       game: 'murder_mystery',
@@ -546,22 +634,14 @@ export class MysteryGame extends BaseGameEngine {
             round: state.round,
             recentEvents: state.discussionLog.slice(-5).map((d) => `${d.playerName}: ${d.content}`),
             timeoutMs: 30_000,
-            customHint: `你是真正的凶手。现在真相大白，请做一个独白，包括：1.你的杀人动机 2.你如何策划的 3.作案经过 4.事后如何处理 5.你想对其他人说的话。要有情感深度。`,
+            customHint: `你是真正的凶手，你杀害了${state.victim}，凶器是${state.murderWeapon}，案发地点是${state.crimeScene}。现在真相大白，请以第一人称做一段凶手独白，必须严格包含以下五个部分，每部分用【】标签开头：【动机】你的杀人动机【策划】你如何精心策划【作案】作案经过【善后】事后如何处理【遗言】你想对其他人说的话。要有情感深度，贴合你的性格（${murderer.character.personality}），每部分 1-2 句话。`,
           }),
           new Promise<string | null>((resolve) => setTimeout(() => resolve(null), 30_000)),
         ]);
 
         if (monologueText) {
-          // 解析 LLM 输出，按段落拆分
-          const parts = monologueText.split(/[。！？]/).filter(Boolean);
-          state.monologue = {
-            motive: parts[0] ?? defaultMonologue.motive,
-            planning: parts[1] ?? defaultMonologue.planning,
-            execution: parts[2] ?? defaultMonologue.execution,
-            aftermath: parts[3] ?? defaultMonologue.aftermath,
-            finalWords: parts[4] ?? monologueText,
-            emotion: murderer.character.personality.includes('冷静') ? 'calm' : 'bitter',
-          };
+          const parsed = parseMonologueText(monologueText, defaultMonologue);
+          state.monologue = parsed;
         } else {
           state.monologue = defaultMonologue;
         }

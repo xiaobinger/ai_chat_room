@@ -455,6 +455,88 @@ cite,.cite-list{display:block}
 .link-danger{margin-left:auto;background:none;border:0;color:#ff758c;cursor:pointer;padding:4px;display:grid;place-items:center;border-radius:6px}
 .link-danger:hover{background:#2a1520}
 
+/* ===== 凶手独白 ===== */
+.monologue-reveal{padding:18px 20px;border-radius:14px;border:1px solid #5a2a35;background:linear-gradient(135deg,#1e1018,#0d0e13);box-shadow:0 12px 32px #00000040;animation:winnerReveal .6s ease}
+.monologue-header{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.monologue-eyebrow{font-size:10px;letter-spacing:1.3px;font-weight:800;text-transform:uppercase;color:#ff9b91}
+.monologue-emotion{margin-left:auto;font-size:10px;padding:3px 10px;border-radius:999px;font-weight:700}
+.monologue-emotion.remorseful{background:#2a1520;color:#ff9b91}
+.monologue-emotion.defiant{background:#3a1520;color:#ff758c}
+.monologue-emotion.calm{background:#1a2a30;color:#8ec9ff}
+.monologue-emotion.bitter{background:#2a2015;color:#ffbd75}
+.monologue-emotion.desperate{background:#2a1525;color:#d4a0ff}
+.monologue-content{display:grid;gap:10px}
+.monologue-section{padding:12px 14px;background:#13141a;border:1px solid #2e2943;border-radius:10px}
+.monologue-label{display:block;font-size:11px;font-weight:700;color:#ffbd75;margin-bottom:4px}
+.monologue-section p{margin:0;font-size:12px;color:#d4d4dc;line-height:1.6}
+.monologue-section.monologue-final{border-color:#61393f;background:linear-gradient(135deg,#1e1018,#13141a)}
+.monologue-section.monologue-final .monologue-label{color:#ff758c}
+.final-words{font-style:italic;color:#ffb3aa;line-height:1.7}
+
+/* ===== 冲突等级条 & 冲突事件动画 ===== */
+.conflict-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;margin:8px 0;border-radius:10px;border:1px solid #3a3460;background:linear-gradient(135deg,#1a1525,#0d0e13);position:relative;overflow:hidden;animation:winnerReveal .4s ease}
+.conflict-bar.elevated{border-color:#5c4526;background:linear-gradient(135deg,#241d11,#0d0e13)}
+.conflict-bar.critical{border-color:#61393f;background:linear-gradient(135deg,#271a1c,#0d0e13);animation:conflictShake .5s ease-in-out}
+.conflict-label{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:#ffbd75;white-space:nowrap}
+.conflict-bar.critical .conflict-label{color:#ff758c}
+.conflict-dot{width:8px;height:8px;border-radius:50%;background:#ffbd75;box-shadow:0 0 8px #ffbd75;animation:pulse 1.2s infinite}
+.conflict-bar.critical .conflict-dot{background:#ff758c;box-shadow:0 0 12px #ff758c}
+.conflict-bar.elevated .conflict-dot{background:#ffcd8f;box-shadow:0 0 10px #ffcd8f}
+.conflict-track{flex:1;height:6px;background:#1d1e28;border-radius:3px;overflow:hidden;min-width:60px}
+.conflict-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#ffbd75,#ff9b91);transition:width .6s ease}
+.conflict-bar.critical .conflict-fill{background:linear-gradient(90deg,#ff9b91,#ff4d6d)}
+.conflict-value{font-size:12px;font-weight:800;color:#ffbd75;min-width:24px;text-align:right}
+.conflict-bar.critical .conflict-value{color:#ff758c}
+.conflict-flash{position:absolute;bottom:-4px;left:0;right:0;padding:6px 14px;font-size:11px;color:#ffb3aa;background:linear-gradient(90deg,#271a1c88,#271a1c00);border-radius:0 0 10px 10px;animation:conflictFlashIn .5s ease;pointer-events:none}
+.conflict-flash.fight{color:#ff4d6d;font-weight:700}
+.conflict-flash.grab{color:#ff9b91}
+.conflict-flash.shove{color:#ffcd8f}
+.conflict-flash.shout{color:#ffbd75}
+.conflict-flash.threaten{color:#d4a0ff}
+@keyframes conflictShake{0%,100%{transform:translateX(0)}15%{transform:translateX(-4px)}30%{transform:translateX(4px)}45%{transform:translateX(-3px)}60%{transform:translateX(3px)}75%{transform:translateX(-1px)}90%{transform:translateX(1px)}}
+@keyframes conflictFlashIn{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:translateY(0)}}
+/* 高冲突时整个游戏视图轻微震动 */
+.game-view.mystery.conflict-critical{animation:gameViewShake .6s ease-in-out}
+@keyframes gameViewShake{0%,100%{transform:translate(0,0)}10%{transform:translate(-2px,1px)}20%{transform:translate(2px,-1px)}30%{transform:translate(-2px,0)}40%{transform:translate(2px,1px)}50%{transform:translate(-1px,-1px)}60%{transform:translate(1px,1px)}70%{transform:translate(-1px,0)}80%{transform:translate(1px,-1px)}90%{transform:translate(0,1px)}}
+
+/* ===== TTS 语音按钮 ===== */
+.tts-btn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;border:1px solid #3a3460;background:#1d1930;color:#ad9eff;cursor:pointer;margin-left:auto;flex:0 0 auto;transition:all .15s ease}
+.tts-btn:hover{border-color:#7457ff;background:#2a2040;color:#fff}
+.tts-btn:active{transform:scale(.92)}
+.day-message.tts-playing{border:1px solid #7457ff;background:linear-gradient(135deg,#1d1930,#13141a);box-shadow:0 0 12px #7457ff22}
+.day-message.tts-playing .tts-btn{border-color:#7457ff;background:#7457ff;color:#fff;animation:pulse 1s infinite}
+
+/* ===== 剧情反转横幅 ===== */
+.twist-banner{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.twist-flash{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:10px;border:1px solid #4a3a6a;background:linear-gradient(135deg,#1e1530,#0d0e13);animation:twistFlashIn .5s ease;position:relative;overflow:hidden}
+.twist-flash::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(116,87,255,.08),transparent);animation:twistSweep 2s ease infinite;pointer-events:none}
+.twist-icon{font-size:22px;line-height:1;flex:0 0 auto}
+.twist-body b{display:block;font-size:13px;color:#d4a0ff;margin-bottom:2px}
+.twist-body p{font-size:12px;color:#b8b0d0;line-height:1.5}
+.twist-timeline{border-color:#3a5a8a;background:linear-gradient(135deg,#152030,#0d0e13)}
+.twist-timeline .twist-body b{color:#7fb8ff}
+.twist-fabricated_clue{border-color:#6a5a3a;background:linear-gradient(135deg,#241d11,#0d0e13)}
+.twist-fabricated_clue .twist-body b{color:#ffcd8f}
+.twist-identity{border-color:#61393f;background:linear-gradient(135deg,#271a1c,#0d0e13)}
+.twist-identity .twist-body b{color:#ff758c}
+.twist-motive{border-color:#5a3a6a;background:linear-gradient(135deg,#201525,#0d0e13)}
+.twist-motive .twist-body b{color:#d48aff}
+@keyframes twistFlashIn{0%{opacity:0;transform:translateY(-10px) scale(.97)}60%{opacity:1;transform:translateY(2px) scale(1.01)}100%{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes twistSweep{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+
+/* ===== 证据链进度条 ===== */
+.evidence-chain{display:flex;align-items:center;gap:10px;padding:10px 14px;margin:8px 0;border-radius:10px;border:1px solid #2a4a3a;background:linear-gradient(135deg,#12201a,#0d0e13);flex-wrap:wrap}
+.chain-label{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#7fd4a8;white-space:nowrap}
+.chain-steps{display:flex;align-items:center;gap:4px;flex:1;min-width:160px}
+.chain-dot{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;position:relative}
+.chain-dot:not(:last-child)::after{content:'';position:absolute;top:6px;left:calc(50% + 8px);width:calc(100% - 16px);height:2px;background:#1d2a22}
+.chain-dot.found:not(:last-child)::after{background:linear-gradient(90deg,#3a8a5a,#7fd4a8)}
+.chain-dot-fill{width:14px;height:14px;border-radius:50%;border:2px solid #2a4a3a;background:#13141a;transition:all .4s ease}
+.chain-dot.found .chain-dot-fill{border-color:#7fd4a8;background:#3a8a5a;box-shadow:0 0 10px #7fd4a866;animation:pulse 1.6s infinite}
+.chain-dot small{font-size:10px;color:#5a6a60}
+.chain-dot.found small{color:#7fd4a8;font-weight:600}
+.chain-hint{font-size:11px;color:#5a8a6a;white-space:nowrap}
+
 /* ===== 移动端全面适配 ===== */
 
 :root{

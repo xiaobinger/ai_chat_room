@@ -781,6 +781,54 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
   连续两轮全仓运行稳定（修复前 3 轮挂 2 轮）
 - `pnpm lint`：0 errors，仅保留既有 `console` warnings
 
+## 2026-09-11：WP21 剧本杀凶手独白（动机/策划/作案/善后/遗言）
+
+### 关键事件
+- **凶手独白功能落地**：剧本杀进入真相揭晓阶段后，自动调用 LLM 生成凶手独白，包含五个结构化段落：
+  - 【动机】杀人动机
+  - 【策划】如何精心策划
+  - 【作案】作案经过
+  - 【善后】事后如何处理
+  - 【遗言】对其他人说的话
+- **结构化 LLM 提示词**：使用【标签】标记要求 LLM 输出固定格式，`parseMonologueText()` 按标签提取各段，失败时回退默认独白
+- **情绪检测**：`murdererEmotionByPersonality()` 通过中文关键词匹配（悔过/不后悔/平静/怨恨/绝望）判定凶手情绪，前端显示对应情绪标签
+- **前端展示**：`MysteryView` 在终局 WinnerBanner 下方新增凶手独白卡片，五个段落分区块展示，情绪标签配色区分
+
+### 技术细节
+- 后端：`apps/ai-worker/src/game/mystery-game.ts`（`generateMonologue()` 调用 + `parseMonologueText()` + `murdererEmotionByPersonality()`）
+- 后端：`apps/ai-worker/src/game/mystery-engine.ts`（`getPlayerView()` 暴露 `monologue` 字段）
+- 前端：`apps/web/src/components/MysteryView.tsx`（`MysteryMonologue` 接口 + `EMOTION_LABELS` 映射 + 独白 UI）
+- 样式：`apps/web/src/styles/app.css`（`.monologue-reveal` 系列样式）
+
+### 验证
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：全仓测试通过
+- `pnpm lint`：0 errors，仅保留既有 `console` warnings
+
+## 2026-09-11：WP22 剧本杀冲突演出系统（扭打 + 冲突 BGM + 语音发言）
+
+### 关键事件
+- **任务冲突可视化**：剧本杀讨论/指控阶段新增冲突检测，被指控方激烈反击时触发冲突事件
+  - 冲突强度模型：基础强度（指控数/辩解数/情绪词）+ 性格加成（暴躁/强势 +15，敏感/胆小 -10），最终 clamp 到 5~95
+  - 五级动作梯度：`fight`（扭打，≥75）→ `grab`（揪扯衣领，≥55）→ `shove`（推搡，≥35）→ `shout`（怒吼）/`threaten`（威胁）
+  - 每个动作有中文描述模板池（如"一拳挥向…被旁人及时拉开"），事件写入 `events`（`type: 'conflict'`）并广播
+- **冲突等级条**：前端实时显示 0~100 冲突警戒条，≥40 橙色 elevated、≥70 红色 critical（整条 UI 震动 + 游戏视图整体轻震）
+- **冲突专属 BGM**：`useAdaptiveGameBgm` 新增 `conflictLevel` 输入，剧本杀讨论/指控阶段冲突 ≥50 时切换"冲突爆发"配置（tempo 112、锯齿波 drone、方波 pulse、accentEvery 2），冲突回落后自动切回原阶段配置
+- **语音消息（TTS）**：发言记录每条新增播放按钮，使用浏览器 Web Speech API（`speechSynthesis`，zh-CN）朗读发言内容，播放中按钮高亮、再点停止、组件卸载自动停止
+
+### 技术细节
+- 后端：`apps/ai-worker/src/game/mystery-types.ts`（`ConflictEvent` 接口、`MysteryGameEvent` 增加 `'conflict'`、`MysteryGameState` 增加 `conflictLevel`/`conflictEvents`）
+- 后端：`apps/ai-worker/src/game/mystery-engine.ts`（`EMOTION_BOOST` 情绪词权重表、`contributionOfEntry()`、`detectAndGenerateConflict()`，`addDiscussion()` 内触发；AI 发言同走 `addDiscussion` 故人类与 AI 冲突规则一致）
+- 前端：`apps/web/src/components/MysteryView.tsx`（冲突等级条、`conflict-critical` 视图震动、`speakText()`/`stopSpeaking()` TTS、发言条目 `tts-btn`）
+- 前端：`apps/web/src/hooks/useAdaptiveGameBgm.ts`（`GamePhaseInput.conflictLevel`、`phaseKey` 增加 `:conflict` 标记、`createProfile` 冲突分支）
+- 前端：`apps/web/src/pages/GameRoom.tsx`（向 BGM hook 传 `conflictLevel`）
+- 样式：`apps/web/src/styles/app.css`（`.conflict-bar` 系列、`@keyframes conflictShake/gameViewShake/conflictFlashIn`、`.tts-btn`）
+
+### 验证
+- `pnpm typecheck`：7 包零错误（修复了 `SpeechSynthesisUtterance` 事件 handler 不接受 undefined 的类型问题）
+- `pnpm test`：全仓测试通过；新增 2 个冲突检测测试（反击触发冲突 / 无指控铺垫不触发），遵循"结构断言而非具体值"约定
+- `pnpm lint`：0 errors，仅保留既有 `console` warnings
+
 ## 经验教训
 1. Windows 环境下工作区路径处理需要特别小心，`\\?\` 前缀会导致 CMD 和部分 Node 工具异常
 2. 后台进程管理在受限沙箱中不可靠，优先让用户本地终端常驻服务
@@ -809,6 +857,71 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
     `completion_tokens` 恰好打满额度 + content 为空。修复是给足额度（200→800），不是无脑重试。
 14. **"失败就沉默"式的兜底会把可用性 bug 放大成体验灾难。** 单看每次 LLM 失败兜底为沉默
     都合理（避免模板发言前后矛盾），但叠加 2/3 空响应率的端点，结果是全场哑巴。
+15. **随机性测试必须断言结构而非具体值。** 剧本杀阶段序列、冲突动作、反转触发都依赖
+    `Math.random()`，硬编码具体值会让测试偶发失败。约定：验证"序列以 introduction 开头、长度 > 4"
+    而非完整序列；验证"冲突事件有 id 且有 action"而非具体强度数值。
+
+## 2026-09-11：WP23 剧本杀深度悬疑化（帮凶 + 反转再反转 + 彩蛋角色中途入场）
+
+### 关键事件
+- **帮凶系统**：凶手可能有一名隐藏帮凶（≥5 人局 45% 概率触发，与黑警互斥）
+  - 帮凶知道凶手身份，目标是指引讨论方向、掩护真凶、把怀疑引向无辜者
+  - 帮凶被投出时触发身份反转事件（`PlotTwist { kind: 'identity' }`），但游戏**不会结束**
+    ——必须同时投出凶手和帮凶，侦探才算胜利
+  - 帮凶 AI 有独立发言策略：讨论阶段引导火力、放大伪证、制造疑点；指控阶段高确信度指控无辜者
+- **剧情反转系统**：分轮次触发，颠覆此前所有推理共识
+  - `timeline`（时间线推翻，第 2 轮 80%）：翻转死亡时间，重置所有不在场证明，嫌疑度随机化
+  - `fabricated_clue`（伪证揭穿，第 2 轮 70%）：一条"被植入"的伪证线索被当众揭穿
+  - `motive`（动机反转，第 3 轮 60%）：揭露受害者秘密信件，颠覆此前动机推断
+- **彩蛋角色中途入场**：NPC 玩家（`npc-*` 前缀）在第 2~3 轮自动 push 进对局
+  - 自带"入场线索"加入线索池，搜证即可发现
+  - 标记为 `isLatecomer: true`，前端显示"中途入场"标签
+  - `isAi()` 自动识别 npc-* 前缀，无需房间注册即自动托管发言/投票
+- **证据链闭环**：关键线索分为 4 环（`means` 凶器 / `opportunity` 时机 / `motive` 动机 / `trace` 痕迹）
+  - 前端实时显示 4 点进度条，X/4 环已闭合
+  - 必须找到全部 4 环才能锁定凶手，缺一不可——纯靠猜/靠打情绪票都指认不了
+- **结算逻辑重写**：
+  - 指认凶手后，根据已闭合证据链环数生成 verdict（1-4 环，侦探方成就感完全不同）
+  - 指认帮凶但不指认凶手 → 仅触发身份反转，对局继续
+  - 指认了被嫁祸的玩家 → 伪证被揭穿，露出"framed"标记
+
+### 技术细节
+- 类型文件：`apps/ai-worker/src/game/mystery-types.ts`
+  - `CharacterCard.isAccomplice?`、`ClueCard.chainStep/isFabricated/isFabricationExposed/fabricatedTo?`
+  - `MysteryPlayerState.isLatecomer?/joinedRound?`
+  - 新增 `PlotTwist` 接口（id, round, kind, title, content, revealedClueId?, timestamp）
+  - 新增 `LatecomerProfile` 接口（character, arrivalClue）
+  - `MysteryGameState` 新增 `accompliceId?/latecomerPool/twists/timelineDisproved?`
+  - `MysteryGameEvent.type` 新增 `'twist' | 'latecomer'`
+- 后端引擎：`apps/ai-worker/src/game/mystery-engine.ts`
+  - `assignMysteryRoles()` 重写：返回 `{ characters, murdererId, policeId, accompliceId?, latecomerChars }`
+  - `initMysteryState()` 重写：证据链标签分配 + 伪证注入 + 彩蛋池构建
+  - 新增 `maybeTriggerTwist(state)`：三种反转类型按轮次条件触发
+  - 新增 `addLatecomer(state)`：pop 彩蛋池 → push 玩家 → 添加入场线索
+  - `nextMysteryRound()` 重写：每轮先触发反转、再按概率触发彩蛋入场
+  - `resolveMysteryVote()` 重写：帮凶 reveal + framed 伪证揭穿 + chainVerdict
+  - `generateMysterySpeech()` 重写：帮凶有独立发言块（讨论/指控两阶段）
+  - `decideMysteryVote()` 重写：帮凶视为 `isEvil`（保护凶手、避开真凶）
+  - `clueImplicationScore()` 增强：已暴露伪证返回 0
+  - `getPlayerView()` 增强：暴露 twists/isLatecomer/joinedRound/isAccomplice/accompliceId（终局）
+- 游戏引擎：`apps/ai-worker/src/game/mystery-game.ts`
+  - `isAi()` 重写：`npc-*` 前缀 → true（自动托管）
+  - `getResults()` 重写：帮凶 win 条件 = 凶手胜且帮凶存活
+  - `generateEpilogues()` 增强：共犯落网/完美共谋/连环反转/迷雾终局 多结局变体
+  - `speakFor()` LLM 提示词：帮凶角色专用提示词（暗中引导、不暴露身份）
+- 前端：`apps/web/src/components/MysteryView.tsx`
+  - `MysteryClue` 接口新增 `chainStep/isFabricated/isFabricationExposed`
+  - `MysteryViewState` 新增 `twists/timelineDisproved/accompliceId`
+  - 新增剧情反转横幅（`twist-banner` + `twist-flash twist-{kind}`，4 种反转各有配色）
+  - 新增证据链进度条（4 点圆点 + 连接线 + X/4 环闭合提示）
+- 样式：`apps/web/src/styles/app.css`
+  - `.twist-banner/.twist-flash` + `@keyframes twistFlashIn/twistSweep`
+  - `.evidence-chain/.chain-dot` + `.chain-dot.found` 高亮动画
+
+### 验证
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：全仓测试通过
+- `pnpm lint`：0 errors，仅保留既有 `console` warnings
     兜底策略必须按"最坏情况叠加"评估，而不是单次失败视角。
 15. **多轮投票游戏必须保证收敛性。** 平票/无人出局若无强制结算机制，AI 票型对称时对局
     永不结束（实测 1.7%）。谁是卧底早有 `consecutiveTies` 兜底而小偷/剧本杀漏配——

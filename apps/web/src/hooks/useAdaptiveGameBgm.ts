@@ -4,6 +4,7 @@ interface GamePhaseInput {
   gameType?: string | null;
   phase?: string | null;
   gameStatus?: string | null;
+  conflictLevel?: number | null;
 }
 
 interface BgmProfile {
@@ -51,12 +52,43 @@ function semitone(root: number, interval: number): number {
   return root * Math.pow(2, interval / 12);
 }
 
-function phaseKey(gameType?: string | null, phase?: string | null, gameStatus?: string | null): string {
-  return `${gameType ?? 'unknown'}:${phase ?? 'idle'}:${gameStatus ?? 'idle'}`;
+function phaseKey(
+  gameType?: string | null,
+  phase?: string | null,
+  gameStatus?: string | null,
+  conflictLevel?: number | null,
+): string {
+  const conflictTag = (gameStatus === 'playing' && (conflictLevel ?? 0) >= 50) ? ':conflict' : '';
+  return `${gameType ?? 'unknown'}:${phase ?? 'idle'}:${gameStatus ?? 'idle'}${conflictTag}`;
 }
 
 function createProfile(input: GamePhaseInput): BgmProfile {
-  const { gameType, phase, gameStatus } = input;
+  const { gameType, phase, gameStatus, conflictLevel } = input;
+
+  if (
+    gameStatus === 'playing' &&
+    gameType === 'murder_mystery' &&
+    (conflictLevel ?? 0) >= 50 &&
+    (phase === 'discussion' || phase === 'accusation')
+  ) {
+    return {
+      key: phaseKey(gameType, phase, gameStatus, conflictLevel),
+      label: '冲突爆发',
+      description: '急促的鼓点与尖锐的锯齿波，圆桌已经变成扭打的战场。',
+      tempo: 112,
+      root: 146.83,
+      droneIntervals: [0, 6, 11],
+      pulsePattern: [0, 1, 6, 11],
+      shimmerPattern: [12, 13, 18, 13],
+      droneWave: 'sawtooth',
+      pulseWave: 'square',
+      masterGain: 0.08,
+      droneGain: 0.12,
+      pulseGain: 0.058,
+      filterFrequency: 820,
+      accentEvery: 2,
+    };
+  }
 
   if (gameStatus === 'finished') {
     if (gameType === 'werewolf') {
@@ -508,7 +540,7 @@ export function useAdaptiveGameBgm(input: GamePhaseInput) {
   const [unlocked, setUnlocked] = useState(false);
   const [supported] = useState(() => typeof window !== 'undefined' && (window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext));
 
-  const profile = useMemo(() => createProfile(input), [input.gameStatus, input.gameType, input.phase]);
+  const profile = useMemo(() => createProfile(input), [input.gameStatus, input.gameType, input.phase, input.conflictLevel]);
   const ctxRef = useRef<AudioContext | null>(null);
   const engineRef = useRef<AudioEngine | null>(null);
   const activeKeyRef = useRef<string | null>(null);

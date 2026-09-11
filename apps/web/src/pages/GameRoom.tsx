@@ -116,6 +116,7 @@ export default function GameRoom() {
     gameType: room?.gameType,
     phase: state?.view?.phase ?? null,
     gameStatus: room?.gameStatus,
+    conflictLevel: typeof state?.view?.conflictLevel === 'number' ? state.view.conflictLevel : null,
   });
 
   const run = async (fn: () => Promise<unknown>, failText: string) => {

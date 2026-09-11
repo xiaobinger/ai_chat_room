@@ -1,4 +1,5 @@
-import { BookOpen, Fingerprint, Search, Sparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { BookOpen, Fingerprint, Link2, Search, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import {
   Countdown,
   HostSummaryCard,
@@ -35,6 +36,18 @@ interface MysteryClue {
   location: string;
   revealsInfo: string;
   isKey: boolean;
+  chainStep?: 'means' | 'opportunity' | 'motive' | 'trace';
+  isFabricated?: boolean;
+  isFabricationExposed?: boolean;
+}
+
+interface MysteryMonologue {
+  motive: string;
+  planning: string;
+  execution: string;
+  aftermath: string;
+  finalWords: string;
+  emotion: string;
 }
 
 interface MysteryViewState extends GameViewState {
@@ -49,6 +62,30 @@ interface MysteryViewState extends GameViewState {
   discussionLog?: { playerId: string; playerName: string; characterName: string; content: string; type: string }[];
   voteStatus?: Record<string, 'voted' | 'abstained'>;
   typingPlayerId?: string | null;
+  monologue?: MysteryMonologue;
+  conflictLevel?: number;
+  conflictEvents?: {
+    id: string;
+    round: number;
+    phase: string;
+    participants: { playerId: string; nickname: string; characterName: string }[];
+    intensity: number;
+    action: string;
+    description: string;
+    trigger: string;
+    timestamp: number;
+  }[];
+  twists?: {
+    id: string;
+    round: number;
+    kind: 'timeline' | 'fabricated_clue' | 'identity' | 'motive';
+    title: string;
+    content: string;
+    revealedClueId?: string;
+    timestamp: number;
+  }[];
+  timelineDisproved?: boolean;
+  accompliceId?: string;
 }
 
 const MYSTERY_PHASE_LABELS: Record<string, string> = {
@@ -65,6 +102,61 @@ const DISCUSSION_TYPE_LABELS: Record<string, string> = {
   question: '追问',
   accusation: '指控',
   defense: '辩解',
+};
+
+const EMOTION_LABELS: Record<string, string> = {
+  remorseful: '悔恨',
+  defiant: '挑衅',
+  calm: '冷静',
+  bitter: '怨恨',
+  desperate: '绝望',
+};
+
+function emotionLabel(emotion: string): string {
+  return EMOTION_LABELS[emotion] ?? emotion;
+}
+
+/** Web Speech API TTS 辅助 */
+function speakText(text: string, onEnd?: () => void): void {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'zh-CN';
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
+  if (onEnd) {
+    utterance.onend = onEnd;
+    utterance.onerror = onEnd;
+  }
+  window.speechSynthesis.speak(utterance);
+}
+
+function stopSpeaking(): void {
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+}
+
+const CONFLICT_ACTION_LABELS: Record<string, string> = {
+  shout: '怒吼',
+  threaten: '威胁',
+  shove: '推搡',
+  grab: '揪扯',
+  fight: '扭打',
+};
+
+const TWIST_LABELS: Record<string, { label: string; icon: string }> = {
+  timeline: { label: '时间线推翻', icon: '⏱️' },
+  fabricated_clue: { label: '伪证揭穿', icon: '🎭' },
+  identity: { label: '身份反转', icon: '🔪' },
+  motive: { label: '动机反转', icon: '💔' },
+};
+
+const CHAIN_STEP_LABELS: Record<string, string> = {
+  means: '凶器',
+  opportunity: '时机',
+  motive: '动机',
+  trace: '痕迹',
 };
 
 const MYSTERY_PHASE_COPY: Record<string, { title: string; subtitle: string; tone: 'neutral' | 'warn' | 'danger' }> = {
@@ -107,8 +199,30 @@ export function MysteryView({
   const highlightedSuspects = suspectBoard.map((player) => `${player.seatNumber ? `${player.seatNumber}号` : ''}${player.nickname}`);
   const focusTerms = suspectBoard.flatMap((player) => [player.nickname, player.character?.name ?? '']).filter(Boolean);
 
+  // 获取当前说话者对应的 TTS 文本
+  const [ttsText, setTtsText] = useState<string | null>(null);
+  const isSpeaking = ttsText !== null;
+
+  // 播放某条发言的 TTS
+  const playTts = (text: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (isSpeaking) {
+      stopSpeaking();
+      setTtsText(null);
+      return;
+    }
+    setTtsText(text);
+    speakText(text, () => setTtsText(null));
+  };
+
+  // 离开游戏时停止语音播放
+  useEffect(() => () => stopSpeaking(), []);
+
+  const conflictLevel = view.conflictLevel ?? 0;
+  const conflictCritical = conflictLevel >= 70;
+
   return (
-    <div className="game-view mystery">
+    <div className={`game-view mystery${conflictCritical ? ' conflict-critical' : ''}`}>
       <StageVeil
         stageKey={`${view.round}-${view.phase}`}
         title={MYSTERY_PHASE_COPY[view.phase]?.title ?? '案情推进'}
@@ -131,6 +245,69 @@ export function MysteryView({
         subtitle={MYSTERY_PHASE_COPY[view.phase]?.subtitle ?? '每次阶段推进都可能让真相更近一步。'}
         tone={MYSTERY_PHASE_COPY[view.phase]?.tone ?? 'neutral'}
       />
+
+      {/* 冲突等级条 */}
+      {(conflictLevel > 10 || (view.conflictEvents?.length ?? 0) > 0) && view.phase !== 'reveal' && (
+        <div className={`conflict-bar ${conflictCritical ? 'critical' : conflictLevel >= 40 ? 'elevated' : ''}`}>
+          <span className="conflict-label">
+            <span className="conflict-dot" />
+            冲突警戒
+          </span>
+          <div className="conflict-track">
+            <div className="conflict-fill" style={{ width: `${conflictLevel}%` }} />
+          </div>
+          <span className="conflict-value">{conflictLevel}</span>
+          {(view.conflictEvents ?? [])
+            .filter((c) => c.phase === view.phase || c.phase === 'discussion')
+            .slice(-2)
+            .reverse()
+            .map((conflict) => (
+              <div key={conflict.id} className={`conflict-flash ${conflict.action}`}>
+                <b>[{CONFLICT_ACTION_LABELS[conflict.action] ?? '冲突'}]</b> {conflict.description}
+              </div>
+            ))}
+        </div>
+      )}
+
+      {/* 剧情反转横幅 */}
+      {(view.twists ?? []).length > 0 && view.phase !== 'reveal' && (
+        <div className="twist-banner">
+          {(view.twists ?? []).slice(-2).reverse().map((twist) => (
+            <div key={twist.id} className={`twist-flash twist-${twist.kind}`}>
+              <span className="twist-icon">{TWIST_LABELS[twist.kind]?.icon ?? '⚡'}</span>
+              <div className="twist-body">
+                <b>{TWIST_LABELS[twist.kind]?.label ?? '反转'} · {twist.title}</b>
+                <p>{twist.content}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 证据链进度 */}
+      {(view.discoveredClues ?? []).some((c) => c.chainStep) && (
+        <div className="evidence-chain">
+          <span className="chain-label">
+            <Link2 size={13} /> 证据链
+          </span>
+          <div className="chain-steps">
+            {(['means', 'opportunity', 'motive', 'trace'] as const).map((step) => {
+              const found = (view.discoveredClues ?? []).some(
+                (c) => c.chainStep === step
+              );
+              return (
+                <span key={step} className={`chain-dot ${found ? 'found' : ''}`}>
+                  <span className="chain-dot-fill" />
+                  <small>{CHAIN_STEP_LABELS[step]}</small>
+                </span>
+              );
+            })}
+          </div>
+          <span className="chain-hint">
+            {(view.discoveredClues ?? []).filter((c) => c.chainStep).length}/4 环已闭合
+          </span>
+        </div>
+      )}
 
       <div className="case-dossier">
         <div>
@@ -159,6 +336,37 @@ export function MysteryView({
           text={view.winner === 'detectives' ? '侦探们获胜！真凶被绳之以法！' : '凶手获胜！成功逃过了指认！'}
           tone={view.winner === 'detectives' ? 'good' : 'bad'}
         />
+      )}
+
+      {finished && view.monologue && (
+        <div className="monologue-reveal" style={{ animationDelay: '0.2s' }}>
+          <div className="monologue-header">
+            <span className="monologue-eyebrow">真相大白</span>
+            <span className={`monologue-emotion ${view.monologue.emotion}`}>{emotionLabel(view.monologue.emotion)}</span>
+          </div>
+          <div className="monologue-content">
+            <div className="monologue-section">
+              <span className="monologue-label">🔥 杀人动机</span>
+              <p>{view.monologue.motive}</p>
+            </div>
+            <div className="monologue-section">
+              <span className="monologue-label">🎯 精心策划</span>
+              <p>{view.monologue.planning}</p>
+            </div>
+            <div className="monologue-section">
+              <span className="monologue-label">🔪 作案经过</span>
+              <p>{view.monologue.execution}</p>
+            </div>
+            <div className="monologue-section">
+              <span className="monologue-label">🧹 事后处理</span>
+              <p>{view.monologue.aftermath}</p>
+            </div>
+            <div className="monologue-section monologue-final">
+              <span className="monologue-label">💀 最后的话</span>
+              <p className="final-words">{view.monologue.finalWords}</p>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="case-brief">
@@ -320,20 +528,30 @@ export function MysteryView({
         <div className="game-section">
           <h4>发言记录</h4>
           <div className="day-messages">
-            {(view.discussionLog ?? []).map((entry, index) => (
-              <div key={index} className="day-message">
-                <b>
-                  {view.players.find((p) => p.playerId === entry.playerId)?.seatNumber
-                    ? `${view.players.find((p) => p.playerId === entry.playerId)?.seatNumber}号 `
-                    : ''}
-                  {entry.playerName}（{entry.characterName}）：
-                </b>
-                <span className={`chip-tag ${entry.type === 'accusation' ? 'danger' : entry.type === 'defense' ? 'active' : 'muted'}`}>
-                  {DISCUSSION_TYPE_LABELS[entry.type] ?? '发言'}
-                </span>
-                <span>{entry.content}</span>
-              </div>
-            ))}
+            {(view.discussionLog ?? []).map((entry, index) => {
+              const isTtsPlaying = ttsText === entry.content;
+              return (
+                <div key={index} className={`day-message ${isTtsPlaying ? 'tts-playing' : ''}`}>
+                  <b>
+                    {view.players.find((p) => p.playerId === entry.playerId)?.seatNumber
+                      ? `${view.players.find((p) => p.playerId === entry.playerId)?.seatNumber}号 `
+                      : ''}
+                    {entry.playerName}（{entry.characterName}）：
+                  </b>
+                  <span className={`chip-tag ${entry.type === 'accusation' ? 'danger' : entry.type === 'defense' ? 'active' : 'muted'}`}>
+                    {DISCUSSION_TYPE_LABELS[entry.type] ?? '发言'}
+                  </span>
+                  <span>{entry.content}</span>
+                  <button
+                    className="tts-btn"
+                    onClick={(e) => playTts(entry.content, e)}
+                    title={isTtsPlaying ? '停止语音' : '播放语音'}
+                  >
+                    {isTtsPlaying ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                  </button>
+                </div>
+              );
+            })}
             <TypingIndicator players={view.players} typingPlayerId={view.typingPlayerId} />
           </div>
         </div>

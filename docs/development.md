@@ -248,6 +248,26 @@ PM2 配置在 `ecosystem.config.cjs`（双进程：`tianma-api` + `tianma-worker
 - **LLM 失败回退模板发言（不再沉默）**：四款游戏在大模型拿不到可用发言时回退各自模板（`generateDaySpeech` / `generateMysterySpeech` / `generateUndercoverDescription` / `generateInvestigationSpeech`），游戏发言超时统一 30s（独白 30s）
 - **多轮投票收敛性**：小偷/剧本杀新增 `consecutiveTies` 可选字段，连续第 3 次平票按累计嫌疑度强制出局/指认（`resolveThiefTiebreak` / `resolveMysteryTiebreak`，与谁是卧底 `resolveTiebreak` 同构）；狼人杀平票后进夜晚、狼人必杀人，天然收敛无需兜底
 
+### 剧本杀冲突演出系统（WP22，2026-09-11）
+
+- **冲突检测入口**：`addDiscussion()` 在 `discussion`/`accusation` 阶段调用 `detectAndGenerateConflict()`；人类 `speak` 与 AI 发言同走此路径，冲突规则对两者一致
+- **冲突强度模型**：`EMOTION_BOOST` 情绪词权重（凶手/杀了你/咆哮等）+ 指控/辩解类型加成 + 被重复提及次数 + 性格修正（暴躁/强势 +15，敏感/胆小 -10），clamp 到 5~95；仅当最近存在他人指控且当前发言点名回击被指控相关的指控者时才触发
+- **动作梯度与描述池**：`fight`（≥75）/`grab`（≥55）/`shove`（≥35）/`shout`/`threaten` 五级，每级中文描述模板池随机取一条；冲突写入 `conflictEvents` 并同步进 `events`（`type: 'conflict'`）广播
+- **状态字段**：`MysteryGameState` 新增 `conflictLevel`（0~100，每次冲突累加 `intensity * 0.4`）与 `conflictEvents`；`getPlayerView()` 两种视角均下发
+- **冲突 BGM 联动**：`useAdaptiveGameBgm` 的 `GamePhaseInput` 新增 `conflictLevel`，`GameRoom.tsx` 从视图透传；剧本杀讨论/指控阶段冲突 ≥50 时 profile key 追加 `:conflict` 并切换"冲突爆发"配置（tempo 112、锯齿波、accentEvery 2），冲突回落后自动切回
+- **前端演出**：`MysteryView` 冲突警戒条（≥40 elevated / ≥70 critical 含 UI 震动与整视图 `gameViewShake`）+ 每条发言的 TTS 按钮（`speechSynthesis`，zh-CN，播放高亮、卸载自动停止）
+
+### 剧本杀深度悬疑化（WP23，2026-09-11）
+
+- **帮凶系统**：`assignMysteryRoles()` 在 ≥5 人局以 45% 概率从非凶手/非警察中选出帮凶（与黑警互斥）；帮凶被投出时触发 `PlotTwist { kind: 'identity' }` 身份反转事件，但游戏不结束——必须同时投出凶手和帮凶侦探才算胜利
+- **帮凶 AI 行为**：`generateMysterySpeech()` 为帮凶增加独立发言块（讨论阶段引导火力/放大伪证/制造疑点，指控阶段高确信度指控无辜者）；`decideMysteryVote()` 将帮凶视为 `isEvil`（保护凶手、避开真凶）；`speakFor()` LLM 提示词增加帮凶角色专用指令
+- **剧情反转系统**：`maybeTriggerTwist(state)` 按轮次触发三种反转——`timeline`（第 2 轮 80%，翻转死亡时间/重置不在场证明/嫌疑度随机化）、`fabricated_clue`（第 2 轮 70%，揭穿已暴露的伪证）、`motive`（第 3 轮 60%，揭露受害者秘密信件）；每次反转写入 `twists` 数组并生成 `type: 'twist'` 事件广播
+- **伪证机制**：`initMysteryState()` 注入一条 `isFabricated: true` 的误导线索，指向非凶手玩家；`clueImplicationScore()` 对已暴露伪证返回 0；`resolveMysteryVote()` 指认被嫁祸玩家时触发伪证揭穿
+- **彩蛋角色中途入场**：`addLatecomer(state)` 从 `latecomerPool` pop 一个角色 push 进玩家列表（`isLatecomer: true`），自带 `arrivalClue` 加入线索池；`nextMysteryRound()` 第 2 轮 65%、第 3 轮 40%（若尚未有人入场）触发；`isAi()` 重写识别 `npc-*` 前缀自动托管
+- **证据链闭环**：关键线索标记 `chainStep`（`means`/`opportunity`/`motive`/`trace` 四环）；前端 `evidence-chain` 进度条实时显示 X/4 环闭合；`resolveMysteryVote()` 根据已闭合环数生成 `chainVerdict`（1-4 环）
+- **结算逻辑重写**：`getResults()` 帮凶 win 条件 = 凶手胜且帮凶存活；`generateEpilogues()` 增加"共犯落网/完美共谋/连环反转/迷雾终局"多结局变体
+- **前端演出**：`MysteryView` 新增 `twist-banner`（4 种反转各有配色 + 扫光动画）和 `evidence-chain`（4 点圆点 + 连接线 + 闭合高亮动画）
+
 ## 已知未完成
 
 - 剧本杀游戏：更完整的复盘页、观察记录与悄悄话前端展示仍待补齐

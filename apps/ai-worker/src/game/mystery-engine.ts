@@ -5,6 +5,9 @@ import type {
   ClueCard,
   DiscussionEntry,
   MysteryScenario,
+  ConflictEvent,
+  PlotTwist,
+  LatecomerProfile,
 } from './mystery-types';
 import { MYSTERY_SCENARIOS } from './mystery-types';
 
@@ -17,6 +20,8 @@ function getSeatNumber(state: MysteryGameState, playerId: string): number | null
 }
 
 function clueImplicationScore(clue: ClueCard, player: MysteryPlayerState): number {
+  // 已被揭穿的伪证不再计入嫌疑推理（揭穿前会正常误导——包括 AI）
+  if (clue.isFabricated && clue.isFabricationExposed) return 0;
   const haystack = `${clue.name} ${clue.description} ${clue.revealsInfo} ${clue.location}`;
   let score = 0;
   if (haystack.includes(player.character.name)) score += 3;
@@ -137,17 +142,18 @@ export function summarizeMysteryPublicNote(state: MysteryGameState): string | un
   return undefined;
 }
 
-/** 分配角色（使用指定剧本的专属角色池，绝不重复） */
+/** 分配角色（使用指定剧本的专属角色池，绝不重复；剩余角色进入彩蛋池供中途空降） */
 export function assignMysteryRoles(
   playerIds: string[],
   scenario: MysteryScenario,
-): { characters: Record<string, CharacterCard>; murdererId: string; policeId: string } {
+): { characters: Record<string, CharacterCard>; murdererId: string; policeId: string; accompliceId?: string; latecomerChars: Omit<CharacterCard, 'id' | 'isMurderer' | 'isAccomplice' | 'isPolice' | 'isCorrupt'>[] } {
   // 角色必须够分，否则抛出（由调用方确保选择够角色的剧本）
   if (scenario.characters.length < playerIds.length) {
     throw new Error(`剧本角色不足：需要 ${playerIds.length} 个，剧本只有 ${scenario.characters.length} 个`);
   }
-  // 打乱后选取与玩家数相等的角色（不取模，保证不重复）
+  // 打乱后选取与玩家数相等的角色（不取模，保证不重复），剩余角色进入彩蛋池
   const shuffledChars = [...scenario.characters].sort(() => Math.random() - 0.5).slice(0, playerIds.length);
+  const latecomerChars = [...scenario.characters].sort(() => Math.random() - 0.5).slice(playerIds.length);
 
   const characters: Record<string, CharacterCard> = {};
   let murdererId = '';
@@ -188,10 +194,25 @@ export function assignMysteryRoles(
   }
   characters[policeId].isPolice = true;
 
-  // 20% 概率警察与凶手勾结（黑警）
-  const isCorrupt = Math.random() < 0.2;
-  characters[policeId].isCorrupt = isCorrupt;
-  if (isCorrupt) {
+  // 帮凶机制：5 人及以上 45% 概率出现（与黑警互斥——一局只有一种"内鬼"配置）
+  // 帮凶知道凶手身份，任务是搅乱调查、掩护真凶；被投出时身份揭穿但游戏不结束
+  let accompliceId: string | undefined;
+  if (playerIds.length >= 5 && Math.random() < 0.45) {
+    const accompliceCandidates = nonMurdererIds.filter((id) => id !== policeId);
+    if (accompliceCandidates.length > 0) {
+      accompliceId = accompliceCandidates[Math.floor(Math.random() * accompliceCandidates.length)];
+      characters[accompliceId].isAccomplice = true;
+      characters[accompliceId].secret += `\n【隐藏身份】你是凶手的帮凶！真凶是${characters[murdererId].name}。你的任务是不动声色地搅乱调查、把怀疑引向无辜的人，绝不能暴露自己与TA的关系。`;
+      characters[accompliceId].objectives = [
+        { type: 'hide_secret' as const, description: '隐藏帮凶身份，掩护真凶不被指认', reward: '共谋得逞', isComplete: false },
+        { type: 'frame_someone' as const, description: '把怀疑成功引向一名无辜者', reward: '额外积分', isComplete: false },
+      ];
+    }
+  }
+
+  // 黑警仅在无帮凶时 20% 概率出现（避免一局双内鬼过乱）
+  if (!accompliceId && Math.random() < 0.2) {
+    characters[policeId].isCorrupt = true;
     characters[policeId].secret += '\n【隐藏身份】你已被凶手收买，将暗中帮助凶手逃脱指控，但最终你也难逃法网。';
     characters[policeId].objectives = [
       { type: 'hide_secret' as const, description: '表面破案，实则保护凶手不被指认', reward: '凶手分赃', isComplete: false },
@@ -199,7 +220,7 @@ export function assignMysteryRoles(
     ];
   }
 
-  return { characters, murdererId, policeId };
+  return { characters, murdererId, policeId, accompliceId, latecomerChars };
 }
 
 /** 初始化游戏状态 */
@@ -211,7 +232,10 @@ export function initMysteryState(
   const eligibleScenarios = MYSTERY_SCENARIOS.filter((s) => s.characters.length >= players.length);
   const pool = eligibleScenarios.length > 0 ? eligibleScenarios : MYSTERY_SCENARIOS;
   const scenario = pool[Math.floor(Math.random() * pool.length)];
-  const { characters, murdererId, policeId } = assignMysteryRoles(players.map((p) => p.playerId), scenario);
+  const { characters, murdererId, policeId, accompliceId, latecomerChars } = assignMysteryRoles(
+    players.map((p) => p.playerId),
+    scenario,
+  );
 
   const playerStates: MysteryPlayerState[] = players.map((p) => ({
     playerId: p.playerId,
@@ -233,6 +257,48 @@ export function initMysteryState(
     id: `clue-${crypto.randomUUID()}`,
   }));
 
+  // 证据链闭环：关键线索各占一环（手段/时机/动机/痕迹），集齐才能锁定真凶
+  const CHAIN_STEPS: ClueCard['chainStep'][] = ['means', 'opportunity', 'motive', 'trace'];
+  let chainIndex = 0;
+  for (const clue of clues) {
+    if (clue.isKey && chainIndex < CHAIN_STEPS.length) {
+      clue.chainStep = CHAIN_STEPS[chainIndex]!;
+      chainIndex++;
+    }
+  }
+
+  // 凶手伪造的误导线索：从非关键线索里改造一条，表面指向无辜者（揭穿前计入嫌疑推理）
+  const nonKeyClues = clues.filter((c) => !c.isKey);
+  const frameTarget = playerStates.find(
+    (p) => p.playerId !== murdererId && p.playerId !== policeId && p.playerId !== accompliceId,
+  );
+  if (nonKeyClues.length > 0 && frameTarget) {
+    const fake = nonKeyClues[Math.floor(Math.random() * nonKeyClues.length)]!;
+    fake.isFabricated = true;
+    fake.fabricatedTo = frameTarget.character.name;
+    fake.description = `${fake.description}（表面上看，这与${frameTarget.character.name}高度相关……）`;
+    fake.revealsInfo = `种种迹象将矛头直接指向${frameTarget.character.name}——但这未经验证的推断，正在把调查带偏。`;
+  }
+
+  // 彩蛋入场池：剩余角色 + 未入场的剩余线索（角色入场时带来专属线索）
+  const selectedClueNames = new Set(clues.map((c) => c.name));
+  const unusedClues = [...scenario.clues.filter((c) => !selectedClueNames.has(c.name))];
+  const latecomerPool: LatecomerProfile[] = latecomerChars.map((character) => {
+    const spare = unusedClues.shift();
+    return {
+      character,
+      arrivalClue: spare
+        ? { ...spare }
+        : {
+            name: `${character.name}带来的证物`,
+            description: `${character.name}随身携带的一份关键证物，上面残留着与案件相关的痕迹。`,
+            location: '随身携带',
+            revealsInfo: `${character.name}与${scenario.victim}之间有着此前无人知晓的关联。`,
+            isKey: true,
+          },
+    };
+  });
+
   return {
     format: 2,
     phase: 'introduction',
@@ -243,6 +309,9 @@ export function initMysteryState(
     murderWeapon: scenario.murderWeapon,
     murdererId,
     policeId,
+    accompliceId,
+    latecomerPool,
+    twists: [],
     clues,
     discoveredClues: [],
     discussionLog: [],
@@ -252,13 +321,15 @@ export function initMysteryState(
     observations: [],
     secretChats: [],
     publicNotes: [{ round: 1, content: `案件开始：围绕 ${scenario.victim} 遇害一案，先确认关系网、动机和不在场证明。` }],
+    conflictLevel: 0,
+    conflictEvents: [],
     events: [
       {
         id: crypto.randomUUID(),
         round: 1,
         phase: 'introduction',
         type: 'game_start',
-        content: `剧本杀《${scenario.title}》开始！${scenario.synopsis}本案由${characters[policeId].name}负责调查。凶手就在你们之中，每轮投票若未揪出凶手，被投出者将出局，直到找出真凶或只剩凶手与一名无辜者……`,
+        content: `剧本杀《${scenario.title}》开始！${scenario.synopsis}本案由${characters[policeId].name}负责调查。凶手就在你们之中——但请记住：真相往往不止一层，证词可以被伪造，时间线可以被推翻，而凶手身边……也许还站着别人。每轮投票若未揪出凶手，被投出者将出局，直到找出真凶或只剩凶手与一名无辜者……`,
         timestamp: Date.now(),
       },
     ],
@@ -331,6 +402,24 @@ export function addDiscussion(
     content: `${player.nickname}（${player.character.name}）：${text}`,
     timestamp: Date.now(),
   });
+
+  // 讨论/指控阶段检测冲突
+  if (next.phase === 'discussion' || next.phase === 'accusation') {
+    const conflict = detectAndGenerateConflict(next, entry);
+    if (conflict) {
+      next.conflictEvents.push(conflict);
+      next.conflictLevel = Math.min(100, next.conflictLevel + conflict.intensity * 0.4);
+      next.events.push({
+        id: crypto.randomUUID(),
+        round: next.round,
+        phase: next.phase,
+        type: 'conflict',
+        actorName: conflict.participants.map((p) => p.nickname).join(' vs '),
+        content: conflict.description,
+        timestamp: Date.now(),
+      });
+    }
+  }
 
   return next;
 }
@@ -409,7 +498,123 @@ function resolveMysteryTiebreak(next: MysteryGameState): string | null {
   return target.playerId;
 }
 
-/** 进入下一轮：重置状态，进入搜证阶段 */
+/** 剧情反转：分轮次触发，颠覆此前推理共识（反转再反转的戏剧节奏） */
+export function maybeTriggerTwist(state: MysteryGameState): PlotTwist | null {
+  const triggeredKinds = new Set(state.twists.map((t) => t.kind));
+
+  // 时间线推翻：第 2 轮开始时高概率触发——所有人的不在场证明瞬间失去价值
+  if (state.round >= 2 && !triggeredKinds.has('timeline') && Math.random() < 0.8) {
+    const twist: PlotTwist = {
+      id: crypto.randomUUID(),
+      round: state.round,
+      kind: 'timeline',
+      title: '尸检报告更新',
+      content: `法医的补充鉴定推翻了此前的判断：${state.victim}的死亡时间比最初认定提前了整整两个小时！这意味着此前所有人的不在场证明全部失去效力——在真正的案发时刻，你们之中有人的"铁证"其实一文不值。`,
+      timestamp: Date.now(),
+    };
+    state.twists.push(twist);
+    state.timelineDisproved = true;
+    // 嫌疑洗牌：此前依赖"不在场证明"的推理全部需要重来
+    for (const player of state.players) {
+      player.suspicionLevel = Math.max(0, player.suspicionLevel + Math.floor(Math.random() * 7) - 3);
+    }
+    return twist;
+  }
+
+  // 伪证揭穿：存在已发现且未揭穿的伪造线索时触发——反转"铁证"的可信度
+  const fabricatedDiscovered = state.clues.find(
+    (c) => c.isFabricated && !c.isFabricationExposed && state.discoveredClues.includes(c.id),
+  );
+  if (state.round >= 2 && fabricatedDiscovered && !triggeredKinds.has('fabricated_clue') && Math.random() < 0.7) {
+    fabricatedDiscovered.isFabricationExposed = true;
+    const framed = fabricatedDiscovered.fabricatedTo ?? '被指向的人';
+    const twist: PlotTwist = {
+      id: crypto.randomUUID(),
+      round: state.round,
+      kind: 'fabricated_clue',
+      title: '伪证鉴定结果',
+      content: `技术科对线索【${fabricatedDiscovered.name}】完成了深入鉴定——结论令人脊背发凉：这是凶手事后伪造的伪证！上面所有指向${framed}的痕迹都是人为布置的。也就是说，真凶一直在利用你们的推理习惯带节奏，${framed}的嫌疑应当被重新评估。`,
+      revealedClueId: fabricatedDiscovered.id,
+      timestamp: Date.now(),
+    };
+    state.twists.push(twist);
+    return twist;
+  }
+
+  // 动机反转：第 3 轮起触发——死者隐藏的秘密曝光，最可疑的人反而洗白
+  if (state.round >= 3 && !triggeredKinds.has('motive') && Math.random() < 0.6) {
+    const alive = getAlivePlayers(state);
+    const mostSuspected = [...alive].sort((a, b) => b.suspicionLevel - a.suspicionLevel)[0];
+    if (mostSuspected && mostSuspected.suspicionLevel > 0) {
+      mostSuspected.suspicionLevel = Math.max(0, mostSuspected.suspicionLevel - 4);
+    }
+    const twist: PlotTwist = {
+      id: crypto.randomUUID(),
+      round: state.round,
+      kind: 'motive',
+      title: '死者的隐藏档案',
+      content: `一封被藏起来的信件曝光了${state.victim}不为人知的另一面——TA生前欠下的债、撒过的谎，远比你们想象的更黑暗。此前被视作"头号嫌疑人"的动机链条出现了根本性动摇：有些"动机"其实是死者自己编织的假象。这桩案子，比表面看起来要深得多。`,
+      timestamp: Date.now(),
+    };
+    state.twists.push(twist);
+    return twist;
+  }
+
+  return null;
+}
+
+/** 彩蛋角色中途入场：剧本剩余角色带着新线索空降对局（NPC 玩家，参与搜证/发言/投票/被指认） */
+export function addLatecomer(state: MysteryGameState): MysteryPlayerState | null {
+  if (state.latecomerPool.length === 0) return null;
+  const profile = state.latecomerPool.shift()!;
+
+  const latecomerId = `npc-latecomer-${crypto.randomUUID().slice(0, 8)}`;
+  const player: MysteryPlayerState = {
+    playerId: latecomerId,
+    nickname: profile.character.name,
+    character: {
+      ...profile.character,
+      id: `char-${latecomerId}`,
+      isMurderer: false,
+    },
+    isAlive: true,
+    hasSpoken: false,
+    hasSearched: false,
+    votes: 0,
+    suspicionLevel: 1,
+    completedObjectives: [],
+    isLatecomer: true,
+    joinedRound: state.round,
+  };
+  state.players.push(player);
+
+  // 入场自带的新线索加入线索池（可在搜证阶段被发现）
+  state.clues.push({
+    ...profile.arrivalClue,
+    id: `clue-${crypto.randomUUID()}`,
+  });
+
+  const arrivalLines = [
+    `【突发】大门被推开——一个所有人都没料到的人出现在众人面前："我是${profile.character.name}，${profile.character.role}。我知道今晚会出事……我带来了关于${state.victim}的关键信息。"`,
+    `【突发】一条不为人知的小径上，${profile.character.name}（${profile.character.role}）冒雨赶到："别急着下结论。${state.victim}的死和三年前的旧事有关——而这个秘密，只有我知道。`,
+    `【突发】${profile.character.name}推门而入，径直走向众人："${profile.character.backstory.slice(0, 40)}……我不在场，不代表我不了解真相。"`,
+  ];
+  const arrival = pick(arrivalLines)!;
+  state.events.push({
+    id: crypto.randomUUID(),
+    round: state.round,
+    phase: state.phase,
+    type: 'latecomer',
+    actorName: profile.character.name,
+    characterName: profile.character.name,
+    content: arrival,
+    timestamp: Date.now(),
+  });
+  rememberPublicNote(state, `第 ${state.round} 轮出现变数：${profile.character.name}中途入场，携带着与${state.victim}有关的新线索，场上局势被重新洗牌。`);
+  return player;
+}
+
+/** 进入下一轮：重置状态，进入搜证阶段（并按剧情节奏触发反转/彩蛋入场） */
 export function nextMysteryRound(state: MysteryGameState): MysteryGameState {
   const next = structuredClone(state);
   next.round += 1;
@@ -430,7 +635,148 @@ export function nextMysteryRound(state: MysteryGameState): MysteryGameState {
     content: `第 ${next.round} 轮开始，进入搜证阶段。请各位继续调查${next.victim}被害的真相。`,
     timestamp: Date.now(),
   });
+
+  // 剧情反转：新轮开场颠覆此前的推理共识（反转再反转）
+  const twist = maybeTriggerTwist(next);
+  if (twist) {
+    next.events.push({
+      id: crypto.randomUUID(),
+      round: next.round,
+      phase: next.phase,
+      type: 'twist',
+      content: `【剧情反转·${twist.title}】${twist.content}`,
+      timestamp: Date.now(),
+    });
+    next.conflictLevel = Math.min(100, next.conflictLevel + 18);
+  }
+
+  // 彩蛋入场：第 2 轮 65% 概率空降一名新角色；第 3 轮若从未入场则 40% 兜底
+  const hasLatecomer = next.players.some((p) => p.isLatecomer);
+  const latecomerChance = next.round === 2 ? 0.65 : next.round === 3 && !hasLatecomer ? 0.4 : 0;
+  if (Math.random() < latecomerChance) {
+    addLatecomer(next);
+  }
+
   return next;
+}
+
+/** 情绪词强度权重 */
+const EMOTION_BOOST: Record<string, number> = {
+  凶手: 8, 骗我: 6, 撒谎: 7, 嫌疑: 6, 动机: 4, 证据: 5, 指认: 7, 控告: 7,
+  杀害: 6, 毒药: 5, 凶器: 5, 尸体: 5, 血: 5, 谋杀: 6,
+  闭嘴: 5, 住口: 4, 你敢: 5, 别想: 4, 滚: 3,
+  我恨: 6, 你该死: 7, 杀了你: 8, 去死: 7,
+  颤抖: 4, 发抖: 4, 愤怒: 5, 怒吼: 6, 咆哮: 7, 抓住: 5,
+};
+
+/** 计算发言的冲突强度贡献 */
+function contributionOfEntry(state: MysteryGameState, entry: DiscussionEntry): number {
+  let score = 0;
+  // 发言类型加成
+  if (entry.type === 'accusation') score += 5;
+  else if (entry.type === 'defense') score -= 2;
+  // 情绪词
+  for (const [word, weight] of Object.entries(EMOTION_BOOST)) {
+    if (entry.content.includes(word)) score += weight;
+  }
+  // 重复提及同一目标
+  const mentioned = state.discussionLog.filter(
+    (e) => e.playerId !== entry.playerId && (e.content.includes(entry.characterName) || e.content.includes(entry.playerId)),
+  );
+  score += mentioned.length * 2;
+  // 发言长度（长发言通常更激烈）
+  score += Math.min(entry.content.length / 50, 3);
+  return Math.max(0, score);
+}
+
+/** 检测当前讨论中是否存在冲突机会并生成冲突事件 */
+export function detectAndGenerateConflict(
+  state: MysteryGameState,
+  lastEntry: DiscussionEntry,
+): ConflictEvent | null {
+  const recentAccusations = state.discussionLog
+    .filter((e) => e.type === 'accusation' && e.playerId !== lastEntry.playerId)
+    .slice(-3);
+  const recentDefs = state.discussionLog
+    .filter((e) => e.type === 'defense' && e.playerId !== lastEntry.playerId)
+    .slice(-3);
+
+  // 只有在有指控且被指控方还在场时才会触发
+  if (recentAccusations.length === 0) return null;
+
+  const targetNames = new Set(recentAccusations.map((e) => e.characterName));
+  const selfCharName = state.players.find((p) => p.playerId === lastEntry.playerId)?.character.name;
+  if (!selfCharName) return null;
+  // 如果这条发言本身就是针对某个被指控者的反击
+  const isCounterAttack = [...targetNames].some((name) => lastEntry.content.includes(name));
+  if (!isCounterAttack) return null;
+
+  // 计算冲突强度
+  const baseIntensity = Math.min(
+    10 + recentAccusations.length * 15 + recentDefs.length * 8 + contributionOfEntry(state, lastEntry) * 2,
+    95,
+  );
+  // 基于性格加成
+  const attacker = state.players.find((p) => p.playerId === lastEntry.playerId);
+  const defender = state.players.find((p) => p.character.name && [...targetNames].includes(p.character.name));
+  if (!attacker || !defender) return null;
+
+  const attackerAggro = /暴躁|强势|阴郁|豪爽|直率/.test(attacker.character.personality) ? 15 : 0;
+  const defenderDef = /敏感|胆小|温柔/.test(defender.character.personality) ? -10 : 0;
+  const intensity = Math.min(Math.max(baseIntensity + attackerAggro + defenderDef, 5), 95);
+
+  // 按强度决定动作类型
+  let action: ConflictEvent['action'];
+  if (intensity >= 75) action = 'fight';
+  else if (intensity >= 55) action = 'grab';
+  else if (intensity >= 35) action = 'shove';
+  else action = Math.random() < 0.5 ? 'shout' : 'threaten';
+
+  // 描述模板
+  const descriptions: Record<string, string[]> = {
+    shout: [
+      `${attacker.nickname}（${attacker.character.name}）猛地一拍桌子怒吼：${defender.nickname}（${defender.character.name}），你有什么资格说话！`,
+      `${attacker.character.name}站起身来，指着${defender.character.name}大声斥责：别以为我不知道你在隐瞒什么！`,
+      `${attacker.nickname}的嗓音骤然拔高：你根本就是在替${state.victim}打掩护！`,
+    ],
+    threaten: [
+      `${attacker.character.name}逼近${defender.character.name}：如果你敢继续乱说，我不会放过你。`,
+      `${attacker.nickname}压低声音对${defender.nickname}放狠话：再追查下去，你会后悔的。`,
+    ],
+    shove: [
+      `${attacker.nickname}一把推了${defender.nickname}（${defender.character.name}）肩膀一把：别再胡说八道！`,
+      `${attacker.character.name}伸手阻拦${defender.character.name}：你给我站住！`,
+    ],
+    grab: [
+      `${attacker.nickname}一把揪住${defender.nickname}（${defender.character.name}）的衣领：把话说清楚！`,
+      `${attacker.character.name}攥住${defender.character.name}的手腕，用力捏紧：你藏了什么？`,
+    ],
+    fight: [
+      `${attacker.nickname}与${defender.nickname}（${defender.character.name}）扭打在一起，两人撞翻了椅子！`,
+      `${attacker.character.name}和${defender.character.name}互相揪着对方的衣领，场面一度失控……`,
+      `${attacker.nickname}一拳挥向${defender.nickname}，被旁人及时拉开——两人之间的敌意已经彻底爆发！`,
+    ],
+  };
+
+  const descList = descriptions[action]!;
+  const description = descList[Math.floor(Math.random() * descList.length)];
+
+  const conflict: ConflictEvent = {
+    id: crypto.randomUUID(),
+    round: state.round,
+    phase: state.phase,
+    participants: [
+      { playerId: attacker.playerId, nickname: attacker.nickname, characterName: attacker.character.name },
+      { playerId: defender.playerId, nickname: defender.nickname, characterName: defender.character.name },
+    ],
+    intensity,
+    action,
+    description,
+    trigger: recentAccusations[recentAccusations.length - 1]!.content.slice(0, 60),
+    timestamp: Date.now(),
+  };
+
+  return conflict;
 }
 
 /** 检查是否只剩凶手和一名非警察（凶手获胜条件） */
@@ -500,7 +846,19 @@ export function resolveMysteryVote(state: MysteryGameState): MysteryGameState {
   const isCorrect = finalAccused === next.murdererId;
 
   if (isCorrect) {
-    rememberPublicNote(next, `${accusedPlayer?.character.name ?? accusedPlayer?.nickname ?? '目标'} 被成功指认为凶手，案件真相即将揭晓。`);
+    // 证据链评估：已发现的关键线索环数决定结局档次（侦探思维的可视化回报）
+    const chainSteps = new Set(
+      next.clues
+        .filter((c) => c.isKey && c.chainStep && next.discoveredClues.includes(c.id))
+        .map((c) => c.chainStep),
+    );
+    const chainVerdict =
+      chainSteps.size >= 3
+        ? `证据链（${chainSteps.size} 个环节）完整闭合——这不是运气，是真正的推理。`
+        : chainSteps.size >= 2
+          ? `证据链只差最后一环（${chainSteps.size}/4），能指认成功多少带一点赌的成分。`
+          : '几乎是在证据不足的情况下赌对了人——运气占了上风。';
+    rememberPublicNote(next, `${accusedPlayer?.character.name ?? accusedPlayer?.nickname ?? '目标'} 被成功指认为凶手，案件真相即将揭晓。${chainVerdict}`);
     // 投出真凶 → 好人胜利
     next.events.push({
       id: crypto.randomUUID(),
@@ -509,7 +867,7 @@ export function resolveMysteryVote(state: MysteryGameState): MysteryGameState {
       type: 'vote_result',
       actorName: accusedPlayer?.nickname,
       characterName: accusedPlayer?.character.name,
-      content: `${accusedPlayer?.nickname}（${accusedPlayer?.character.name}）被指控为凶手！指控正确！真相大白。`,
+      content: `${accusedPlayer?.nickname}（${accusedPlayer?.character.name}）被指控为凶手！指控正确！${chainVerdict}${next.accompliceId && next.players.find((p) => p.playerId === next.accompliceId)?.isAlive ? '顺带一提：帮凶仍混在你们中间，等待复盘揭晓。' : ''}真相大白。`,
       timestamp: Date.now(),
     });
     next.winner = 'detectives';
@@ -521,8 +879,50 @@ export function resolveMysteryVote(state: MysteryGameState): MysteryGameState {
   if (accusedPlayer) {
     accusedPlayer.isAlive = false;
     accusedPlayer.suspicionLevel += 3;
-    rememberPublicNote(next, `${accusedPlayer.character.name} 被投出但并非凶手，场上判断方向需要彻底重估。`);
+
+    // 帮凶被投出：身份反转大事件——被指认者不是凶手，竟是凶手的帮凶！真凶仍逍遥法外
+    if (accusedPlayer.character.isAccomplice) {
+      const twist: PlotTwist = {
+        id: crypto.randomUUID(),
+        round: next.round,
+        kind: 'identity',
+        title: '帮凶身份暴露',
+        content: `被投出的${accusedPlayer.character.name}竟然不是凶手——TA是凶手的帮凶！在众人的逼问下，${accusedPlayer.character.name}崩溃地喊道："我只是在替TA打掩护……但我说什么都不会出卖TA！"真凶仍然逍遥法外，而这桩案子的水，比你们想象的深得多。`,
+        timestamp: Date.now(),
+      };
+      next.twists.push(twist);
+      rememberPublicNote(next, `${accusedPlayer.character.name} 被揭穿为帮凶！真凶另有其人，且与帮凶的关系成为新的破案方向。`);
+      next.events.push({
+        id: crypto.randomUUID(),
+        round: next.round,
+        phase: 'voting',
+        type: 'twist',
+        actorName: accusedPlayer.nickname,
+        characterName: accusedPlayer.character.name,
+        content: `【剧情反转·帮凶身份暴露】${twist.content}`,
+        timestamp: Date.now(),
+      });
+    } else {
+      rememberPublicNote(next, `${accusedPlayer.character.name} 被投出但并非凶手，场上判断方向需要彻底重估。`);
+    }
   }
+
+  // 被伪证误导的出局：凶手伪造的线索把大家引向了无辜者
+  const framedClue = accusedPlayer
+    ? next.clues.find((c) => c.isFabricated && c.fabricatedTo === accusedPlayer.character.name && !c.isFabricationExposed)
+    : undefined;
+  if (framedClue) {
+    framedClue.isFabricationExposed = true;
+    next.events.push({
+      id: crypto.randomUUID(),
+      round: next.round,
+      phase: 'voting',
+      type: 'twist',
+      content: `【剧情反转·伪证反噬】复盘发现：让${accusedPlayer?.character.name}背上嫌疑的线索【${framedClue.name}】竟是凶手伪造的伪证！真凶用你们的推理习惯反过来利用了你们——这恰恰说明TA对每个人的心理了如指掌。`,
+      timestamp: Date.now(),
+    });
+  }
+
   next.events.push({
     id: crypto.randomUUID(),
     round: next.round,
@@ -530,7 +930,7 @@ export function resolveMysteryVote(state: MysteryGameState): MysteryGameState {
     type: 'vote_result',
     actorName: accusedPlayer?.nickname,
     characterName: accusedPlayer?.character.name,
-    content: `${accusedPlayer?.nickname}（${accusedPlayer?.character.name}）被投票出局，但TA不是凶手！真凶仍藏匿其中，调查继续……`,
+    content: `${accusedPlayer?.nickname}（${accusedPlayer?.character.name}）被投票出局，但TA不是凶手！${accusedPlayer?.character.isAccomplice ? '更令人震惊的是——TA是凶手的帮凶！' : ''}真凶仍藏匿其中，调查继续……`,
     timestamp: Date.now(),
   });
 
@@ -629,6 +1029,34 @@ export function generateMysterySpeech(
       return say(pick(evadeTemplates)!);
     }
 
+    // 帮凶：表面认真推理，实则把怀疑引向无辜者、为真凶解围
+    if (character.isAccomplice) {
+      const murderer = state.players.find((p) => p.playerId === state.murdererId && p.isAlive);
+      const murdererUnderFire =
+        murderer && recentDiscussions.some(
+          (entry) => entry.content.includes(murderer.character.name) || entry.content.includes(murderer.nickname),
+        );
+      // 真凶被点名 → 立即用"合理怀疑"为TA解围，把矛头转向别人
+      if (murdererUnderFire && topSuspect && topSuspect.playerId !== state.murdererId) {
+        const coverLines = [
+          `等等，仅凭这些就怀疑${murderer!.character.name}？我认为太草率了。相反，${topSuspect.character.name}的"${topSuspect.character.alibi}"才最经不起推敲——案发时间点上根本对不齐。`,
+          `恕我直言，把精力浪费在${murderer!.character.name}身上是中了真凶的圈套。${topSuspect.character.name}与${victim}的关系才是最值得深挖的。`,
+        ];
+        return say(pick(coverLines)!);
+      }
+      // 带节奏：主动放大高嫌疑无辜者的嫌疑（尤其顺着未揭穿的伪证指向说）
+      const unexposedFabricated = discoveredClueObjs.find(
+        (c) => c.isFabricated && !c.isFabricationExposed,
+      );
+      if (unexposedFabricated && Math.random() < 0.6) {
+        return say(`线索【${unexposedFabricated.name}】的信息量比你们意识到的大得多——${unexposedFabricated.revealsInfo.slice(0, 45)}……这几乎就是明示了吧？我建议重点查一查这个人。`);
+      }
+      if (topSuspect && topSuspect.playerId !== player.playerId && topSuspect.playerId !== state.murdererId) {
+        return say(`我一直在默默核对每个人的说法，越核对越觉得 ${topSuspect.character.name} 的解释漏洞最多。"${topSuspect.character.alibi}"听起来完整，但缺少一个能独立作证的人。`);
+      }
+      return say(`直觉告诉我，最不可能是凶手的人反而最可疑。${victim}这案子，大家都别太相信自己的第一印象。`);
+    }
+
     // 非凶手：结合线索和讨论推理
     if (recentMentionsMe.length > 0 && Math.random() < 0.5) {
       const defenseTemplates = [
@@ -682,6 +1110,15 @@ export function generateMysterySpeech(
       }
       return say(`我觉得${aliveOthers[0]?.character.name}非常可疑，${victim}一定是${aliveOthers[0]?.character.name}杀的！`);
     }
+    // 帮凶：公开指控一名无辜者，为真凶挡刀（语气更笃定，制造"信息差"）
+    if (character.isAccomplice) {
+      const candidates = rankedSuspects.filter((p) => !p.character.isMurderer && p.playerId !== player.playerId);
+      const target = candidates[0] ?? aliveOthers.find((p) => !p.character.isMurderer);
+      if (target) {
+        return say(`我反复权衡过所有可能性——我指控${target.character.name}。${target.character.name}的每一条解释都像是提前准备好的，尤其是"${target.character.alibi}"，完美得反而可疑。${victim}的死，答案就在TA身上。`);
+      }
+      return say(`综合所有线索，我已经有了自己的答案，请大家相信我的判断——真正的凶手，一定不在你们最怀疑的那几个人里。`);
+    }
     // 好人：基于线索和嫌疑投票
     if (topSuspect) {
       if (cluePointingTopSuspect) {
@@ -708,7 +1145,7 @@ export function decideMysteryVote(
 ): { playerId: string; targetId: string } {
   const { character } = player;
   const isMurderer = character.isMurderer;
-  const isCorruptPolice = character.isPolice && character.isCorrupt;
+  const isEvil = isMurderer || character.isAccomplice || (character.isPolice && character.isCorrupt);
   const alivePlayers = getAlivePlayers(state).filter((p) => p.playerId !== player.playerId);
 
   if (alivePlayers.length === 0) {
@@ -717,10 +1154,10 @@ export function decideMysteryVote(
 
   let target: MysteryPlayerState;
 
-  if (isMurderer || isCorruptPolice) {
-    // 凶手 / 黑警：优先嫁祸高嫌疑的非凶手玩家（保护真凶）
+  if (isEvil) {
+    // 凶手 / 帮凶 / 黑警：优先嫁祸高嫌疑的非凶手玩家（保护真凶）
     const nonMurderers = alivePlayers.filter((p) => !p.character.isMurderer);
-    // 黑警不投凶手；凶手不自投
+    // 帮凶与黑警不投凶手；凶手不自投
     const safeTargets = nonMurderers.filter((p) => p.playerId !== state.murdererId);
     const sorted = [...(safeTargets.length > 0 ? safeTargets : nonMurderers)].sort((a, b) => {
       const scoreB = mysteryPublicScore(state, b) + mysteryPersonalityBias(state, player, b);
@@ -771,8 +1208,13 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
         isAlive: p.isAlive,
         isPolice: p.character.isPolice,
         suspicionLevel: p.suspicionLevel,
+        isLatecomer: p.isLatecomer ?? false,
+        joinedRound: p.joinedRound,
       })),
       winner: state.winner,
+      conflictLevel: state.conflictLevel,
+      conflictEvents: state.conflictEvents,
+      twists: state.twists,
       // 观众视角：隐藏仅警察可见的观察记录（visibleTo 限定的侦探/警察推理）
       events: state.events.filter((e) => !e.visibleTo),
     };
@@ -805,6 +1247,7 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
         role: p.character.role,
         personality: p.character.personality,
         isMurderer: finished ? p.character.isMurderer : undefined,
+        isAccomplice: finished ? p.character.isAccomplice : undefined,
         isPolice: p.character.isPolice,
         isCorrupt: finished ? p.character.isCorrupt : undefined,
       },
@@ -813,10 +1256,18 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
       hasSpoken: p.hasSpoken,
       hasSearched: p.hasSearched,
       suspicionLevel: p.suspicionLevel,
+      isLatecomer: p.isLatecomer ?? false,
+      joinedRound: p.joinedRound,
     })),
     murdererId: finished ? state.murdererId : undefined,
+    accompliceId: finished ? state.accompliceId : undefined,
     accusedMurdererId: state.accusedMurdererId,
     winner: state.winner,
+    monologue: finished ? state.monologue : undefined,
+    conflictLevel: state.conflictLevel,
+    conflictEvents: state.conflictEvents,
+    twists: state.twists,
+    timelineDisproved: state.timelineDisproved ?? false,
     // 警察观察记录仅警察本人与终局可见，其余玩家过滤掉（防泄露警察身份与推理）
     events: finished
       ? state.events

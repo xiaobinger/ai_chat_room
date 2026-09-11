@@ -9,7 +9,7 @@ import { aiJudgeBroadcast } from '../game/werewolf-engine';
 import { decideUndercoverVote } from '../game/who-is-undercover-engine';
 import { decideThiefVote, initThiefGameState, resolveThiefVote } from '../game/who-is-the-thief-engine';
 import type { ThiefGameState } from '../game/who-is-the-thief-types';
-import { decideMysteryVote, initMysteryState, resolveMysteryVote } from '../game/mystery-engine';
+import { addDiscussion, decideMysteryVote, initMysteryState, resolveMysteryVote } from '../game/mystery-engine';
 import type { GameState } from '../game/types';
 import type { GamePlayerInfo } from '../game/errors';
 import type { ModelProvider } from '../model-provider';
@@ -756,6 +756,48 @@ describe('剧本杀', () => {
     state.discoveredClues = [state.clues[0].id];
 
     expect(decideMysteryVote(state as never, voter as never).targetId).toBe(clueTarget.playerId);
+  });
+
+  it('激烈反击指控时生成冲突事件并广播，冲突等级上升', () => {
+    const state = initMysteryState(aiPlayers(4).map((p) => ({ playerId: p.playerId, nickname: p.nickname })));
+    state.phase = 'discussion';
+    const [a, b] = state.players;
+    const withAccusation = addDiscussion(
+      state,
+      a.playerId,
+      `我怀疑${b.character.name}就是凶手，他的不在场证明是撒谎！`,
+      'accusation',
+    );
+    const withCounter = addDiscussion(
+      withAccusation,
+      b.playerId,
+      `${a.character.name}你给我闭嘴！你血口喷人，你才该死！`,
+      'defense',
+    );
+
+    // 结构断言（冲突强度含随机成分，不验证具体值）
+    expect(withCounter.conflictLevel).toBeGreaterThan(0);
+    expect(withCounter.conflictEvents.length).toBeGreaterThan(0);
+    const conflict = withCounter.conflictEvents[0]!;
+    expect(['shout', 'threaten', 'shove', 'grab', 'fight']).toContain(conflict.action);
+    expect(conflict.intensity).toBeGreaterThanOrEqual(5);
+    expect(conflict.intensity).toBeLessThanOrEqual(95);
+    expect(conflict.participants.map((p) => p.playerId).sort()).toEqual([a.playerId, b.playerId].sort());
+    expect(conflict.description).toBeTruthy();
+    expect(withCounter.events.some((e) => e.type === 'conflict')).toBe(true);
+  });
+
+  it('没有指控铺垫时发言不触发冲突', () => {
+    const state = initMysteryState(aiPlayers(4).map((p) => ({ playerId: p.playerId, nickname: p.nickname })));
+    state.phase = 'discussion';
+    const [a, b] = state.players;
+    const withPlainStatement = addDiscussion(state, a.playerId, '大家冷静一点，先把时间线对齐。', 'statement');
+    expect(withPlainStatement.conflictEvents.length).toBe(0);
+    expect(withPlainStatement.conflictLevel).toBe(0);
+    expect(withPlainStatement.events.some((e) => e.type === 'conflict')).toBe(false);
+    // b 未被指控，情绪化发言也不会引发冲突
+    const withEmotional = addDiscussion(withPlainStatement, b.playerId, '我受够了这个鬼地方！', 'statement');
+    expect(withEmotional.conflictEvents.length).toBe(0);
   });
 
   it('连续 3 轮平票后按累计嫌疑度强制指认，对局必然收敛', () => {
