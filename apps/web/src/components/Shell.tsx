@@ -58,6 +58,9 @@ export function Top({
 }) {
   return (
     <header className="top">
+      <div className="top-logo">
+        <span className="brandmark">天</span>
+      </div>
       <div>
         <h1>{title}</h1>
         <p>{sub}</p>
