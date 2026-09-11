@@ -375,7 +375,7 @@ export class MysteryGame extends BaseGameEngine {
     return phase === 'introduction' || phase === 'discussion' || phase === 'accusation';
   }
 
-  /** 为单个 AI 生成发言：大模型成功则发言，超时/空响应/出错则保持沉默 */
+  /** 为单个 AI 生成发言：大模型成功则发言，失败/超时/空响应回退模板，尽量不沉默 */
   private async speakFor(player: MysteryPlayerState, type: 'introduction' | 'discussion' | 'accusation'): Promise<void> {
     if (!this.speechProvider) {
       this.state = addDiscussion(this.state, player.playerId, generateMysterySpeech(this.state, player, type), type === 'accusation' ? 'accusation' : 'statement');
@@ -404,15 +404,15 @@ export class MysteryGame extends BaseGameEngine {
       phase: phaseLabel,
       round: this.state.round,
       recentEvents,
-      timeoutMs: 15_000,
+      timeoutMs: 30_000,
       customHint,
     });
 
     if (llmSpeech && llmSpeech.trim().length >= 2) {
       this.state = addDiscussion(this.state, player.playerId, llmSpeech, type === 'accusation' ? 'accusation' : 'statement');
     } else {
-      // 没发言就保持沉默
-      this.state = skipDiscussion(this.state, player.playerId);
+      // 大模型不可用/超时/空响应：回退模板发言，避免 AI 集体沉默
+      this.state = addDiscussion(this.state, player.playerId, generateMysterySpeech(this.state, player, type), type === 'accusation' ? 'accusation' : 'statement');
     }
   }
 

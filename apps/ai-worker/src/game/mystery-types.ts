@@ -87,6 +87,8 @@ export interface MysteryGameState {
   typingPlayerId?: string | null;
   votes: Record<string, string>;      // voterId -> targetId
   voteStatus: Record<string, 'voted' | 'abstained'>;
+  /** 连续平票轮数（达到 3 次按累计嫌疑度强制指认，防止对局永不收敛） */
+  consecutiveTies?: number;
   accusedMurdererId?: string;         // 被指控的凶手
   winner?: 'murderer' | 'detectives';
   events: MysteryGameEvent[];

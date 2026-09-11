@@ -69,6 +69,8 @@ export interface ThiefGameState {
   /** 本局全部线索（未公开前对玩家不可见） */
   clues: string[];
   masterThiefEscapeUsed: boolean;
+  /** 连续平票轮数（达到 3 次按累计嫌疑度强制出局，防止对局永不收敛） */
+  consecutiveTies?: number;
   /** 全员可见的局势记忆 */
   publicNotes: ThiefPublicNote[];
   /** 正在调用大模型生成发言的 AI 玩家（前端显示“正在输入”过渡） */

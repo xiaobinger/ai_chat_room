@@ -465,7 +465,7 @@ export class WerewolfGame extends BaseGameEngine {
     return true;
   }
 
-  /** 为单个 AI 生成白天发言：大模型成功则发言，超时/空响应/出错则保持沉默 */
+  /** 为单个 AI 生成白天发言：大模型成功则发言，失败/超时/空响应回退模板，尽量不沉默 */
   private async speakForDay(p: PlayerState): Promise<void> {
     const state = this.state;
     const recentEvents = state.dayMessages.slice(-5).map((m) => `${m.nickname}: ${m.content}`);
@@ -477,14 +477,14 @@ export class WerewolfGame extends BaseGameEngine {
       phase: '白天讨论',
       round: state.round,
       recentEvents,
-      timeoutMs: 15_000,
+      timeoutMs: 30_000,
       customHint: p.role === 'werewolf' ? '你是狼人，要伪装成好人，误导投票方向。' : undefined,
     });
     if (speech && speech.trim().length >= 2) {
       applyDaySpeak(state, p.playerId, speech);
     } else {
-      // 没发言就保持沉默
-      applyDaySkip(state, p.playerId);
+      // 大模型不可用/超时/空响应：回退模板发言，避免 AI 集体沉默
+      applyDaySpeak(state, p.playerId, generateDaySpeech({ state, aiPlayer: p }));
     }
   }
 

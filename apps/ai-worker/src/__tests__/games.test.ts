@@ -7,9 +7,9 @@ import { ThiefGame } from '../game/thief-game';
 import { MysteryGame } from '../game/mystery-game';
 import { aiJudgeBroadcast } from '../game/werewolf-engine';
 import { decideUndercoverVote } from '../game/who-is-undercover-engine';
-import { decideThiefVote } from '../game/who-is-the-thief-engine';
+import { decideThiefVote, initThiefGameState, resolveThiefVote } from '../game/who-is-the-thief-engine';
 import type { ThiefGameState } from '../game/who-is-the-thief-types';
-import { decideMysteryVote } from '../game/mystery-engine';
+import { decideMysteryVote, initMysteryState, resolveMysteryVote } from '../game/mystery-engine';
 import type { GameState } from '../game/types';
 import type { GamePlayerInfo } from '../game/errors';
 import type { ModelProvider } from '../model-provider';
@@ -595,12 +595,12 @@ describe('谁是小偷', () => {
     expect(decideThiefVote(state as never, voter as never).targetId).toBe(target.playerId);
   });
 
-  it('speechProvider 失败时 AI 保持沉默，不阻塞调查阶段', async () => {
+  it('speechProvider 失败时 AI 回退模板发言，不阻塞调查阶段', async () => {
     const game = new ThiefGame(aiPlayers(5), undefined, {
       speechProvider: gameSpeechProvider('不会被使用', true),
     });
 
-    // 两步：第一步标记“正在输入”，第二步真正调用大模型（失败）→ 保持沉默
+    // 两步：第一步标记“正在输入”，第二步真正调用大模型（失败，重试一次仍失败）→ 回退模板发言
     await game.step();
     await game.step();
 
@@ -608,8 +608,9 @@ describe('谁是小偷', () => {
       speechLog: { content: string }[];
       players: { hasSpoken: boolean }[];
     };
-    // 失败不产出任何发言（保持沉默），但已标记该 AI 发言完毕，流程不阻塞
-    expect(state.speechLog.length).toBe(0);
+    // LLM 失败不再沉默：回退模板发言，且已标记该 AI 发言完毕，流程不阻塞
+    expect(state.speechLog.length).toBe(1);
+    expect(state.speechLog[0]?.content.length).toBeGreaterThan(0);
     expect(state.players.some((p) => p.hasSpoken)).toBe(true);
   });
 
@@ -629,6 +630,37 @@ describe('谁是小偷', () => {
 
     const vote = decideThiefVote(state, detective);
     expect(vote.targetId).toBe(thief.playerId);
+  });
+
+  it('连续 3 轮平票后按累计嫌疑度强制出局，对局必然收敛', () => {
+    // 实测约 1.7% 的全 AI 对局会陷入 2:2 平票死循环（票型长期对称、无人出局），
+    // 修复前 80 轮都不结束；修复后第 3 次连续平票触发强制结算
+    const state = initThiefGameState(aiPlayers(4).map((p) => ({ playerId: p.playerId, nickname: p.nickname })));
+    const [a, b, c, d] = state.players;
+
+    for (let round = 0; round < 3; round++) {
+      state.phase = 'voting';
+      // 固定 2:2 平票票型
+      state.votes = {
+        [a.playerId]: c.playerId,
+        [b.playerId]: c.playerId,
+        [c.playerId]: d.playerId,
+        [d.playerId]: d.playerId,
+      };
+      state.voteStatus = {};
+      resolveThiefVote(state);
+    }
+
+    // 第三轮触发强制结算：必有人出局（或神偷消耗掉整局一次的逃脱），僵局计数清零
+    expect(
+      state.players.some((p) => !p.isAlive) || state.masterThiefEscapeUsed,
+    ).toBe(true);
+    expect(state.consecutiveTies).toBe(0);
+    expect(
+      state.events.some(
+        (e) => e.type === 'vote_result' && (e.content.includes('强制出局') || e.content.includes('强制结算')),
+      ),
+    ).toBe(true);
   });
 });
 
@@ -724,6 +756,34 @@ describe('剧本杀', () => {
     state.discoveredClues = [state.clues[0].id];
 
     expect(decideMysteryVote(state as never, voter as never).targetId).toBe(clueTarget.playerId);
+  });
+
+  it('连续 3 轮平票后按累计嫌疑度强制指认，对局必然收敛', () => {
+    // 与谁是小偷同一套兜底：平票无人出局可能无限续轮，第 3 次连续平票强制结算
+    let state = initMysteryState(aiPlayers(4).map((p) => ({ playerId: p.playerId, nickname: p.nickname })));
+    const [a, b, c, d] = state.players;
+
+    for (let round = 0; round < 3; round++) {
+      state.phase = 'voting';
+      // 固定 2:2 平票票型
+      state.votes = {
+        [a.playerId]: c.playerId,
+        [b.playerId]: c.playerId,
+        [c.playerId]: d.playerId,
+        [d.playerId]: d.playerId,
+      };
+      state.voteStatus = {};
+      state = resolveMysteryVote(state);
+    }
+
+    // 第三轮触发强制指认：要么指认正确直接揭晓，要么有人被淘汰进入下一轮
+    expect(
+      state.winner !== undefined || state.players.some((p) => !p.isAlive),
+    ).toBe(true);
+    expect(state.consecutiveTies).toBe(0);
+    expect(
+      state.events.some((e) => e.type === 'vote_result' && e.content.includes('强制指认')),
+    ).toBe(true);
   });
 });
 

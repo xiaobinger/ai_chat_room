@@ -384,6 +384,31 @@ export function applyMysteryVote(state: MysteryGameState, playerId: string, targ
   return next;
 }
 
+/**
+ * 连续 3 轮平票僵局：按累计嫌疑度最高者强制指认，打破僵局。
+ * 与谁是卧底的 resolveTiebreak 同一套兜底，返回被强制指认的 playerId。
+ */
+function resolveMysteryTiebreak(next: MysteryGameState): string | null {
+  const count = next.consecutiveTies ?? 0;
+  next.consecutiveTies = 0;
+  const alive = next.players.filter((p) => p.isAlive);
+  if (alive.length === 0) return null;
+  const sorted = [...alive].sort(
+    (a, b) => b.suspicionLevel - a.suspicionLevel || (a.nickname > b.nickname ? 1 : -1),
+  );
+  const target = sorted[0];
+  rememberPublicNote(next, `连续 ${count} 轮平票，按累计嫌疑度强制指认 ${target.nickname}，避免调查无限拖延。`);
+  next.events.push({
+    id: crypto.randomUUID(),
+    round: next.round,
+    phase: 'voting',
+    type: 'vote_result',
+    content: `连续 ${count} 轮平票僵局！按累计嫌疑度强制指认 ${target.nickname}，本轮强制结算。`,
+    timestamp: Date.now(),
+  });
+  return target.playerId;
+}
+
 /** 进入下一轮：重置状态，进入搜证阶段 */
 export function nextMysteryRound(state: MysteryGameState): MysteryGameState {
   const next = structuredClone(state);
@@ -442,24 +467,37 @@ export function resolveMysteryVote(state: MysteryGameState): MysteryGameState {
     }
   }
 
-  // 平票或无人投票 → 本轮无人出局，直接进入下一轮
+  // 平票或无人投票 → 僵局计数；连续 3 次则按累计嫌疑度强制指认
+  let forcedAccused: string | null = null;
   if (tie || !accused || maxVotes === 0) {
-    rememberPublicNote(next, tie ? '本轮出现平票，说明大家对凶手判断仍未统一。' : '本轮无人投票，场上仍缺一个足够让大家信服的怀疑对象。');
-    next.events.push({
-      id: crypto.randomUUID(),
-      round: next.round,
-      phase: 'voting',
-      type: 'vote_result',
-      content: tie ? '投票平票！本轮无人出局，继续调查。' : '无人投票！本轮无人出局，继续调查。',
-      timestamp: Date.now(),
-    });
-    return nextMysteryRound(next);
+    next.consecutiveTies = (next.consecutiveTies ?? 0) + 1;
+    if (next.consecutiveTies >= 3) {
+      // 连续平票僵局兜底（与谁是卧底一致）：按累计嫌疑度强制指认一人，
+      // 走下方正常结算（指认正确→好人胜；错误→淘汰+下一轮），
+      // 防止 AI 票型长期对称导致调查无限拖延
+      forcedAccused = resolveMysteryTiebreak(next);
+    }
+    if (!forcedAccused) {
+      rememberPublicNote(next, tie ? '本轮出现平票，说明大家对凶手判断仍未统一。' : '本轮无人投票，场上仍缺一个足够让大家信服的怀疑对象。');
+      next.events.push({
+        id: crypto.randomUUID(),
+        round: next.round,
+        phase: 'voting',
+        type: 'vote_result',
+        content: tie ? '投票平票！本轮无人出局，继续调查。' : '无人投票！本轮无人出局，继续调查。',
+        timestamp: Date.now(),
+      });
+      return nextMysteryRound(next);
+    }
   }
 
-  // 有人被投出
-  next.accusedMurdererId = accused;
-  const accusedPlayer = next.players.find((p) => p.playerId === accused);
-  const isCorrect = accused === next.murdererId;
+  // 有人被投出（含连续平票后的强制指认）
+  next.consecutiveTies = 0;
+  const finalAccused = forcedAccused ?? accused;
+  if (!finalAccused) return nextMysteryRound(next); // 理论不可达（非平票时 accused 必非空），防御性兜底
+  next.accusedMurdererId = finalAccused;
+  const accusedPlayer = next.players.find((p) => p.playerId === finalAccused);
+  const isCorrect = finalAccused === next.murdererId;
 
   if (isCorrect) {
     rememberPublicNote(next, `${accusedPlayer?.character.name ?? accusedPlayer?.nickname ?? '目标'} 被成功指认为凶手，案件真相即将揭晓。`);

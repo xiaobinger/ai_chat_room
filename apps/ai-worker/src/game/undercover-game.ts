@@ -195,15 +195,15 @@ export class UndercoverGame extends BaseGameEngine {
       phase: '描述阶段',
       round: this.state.round,
       recentEvents,
-      timeoutMs: 15_000,
+      timeoutMs: 30_000,
       customHint,
     });
 
     if (llmSpeech && llmSpeech.trim().length >= 2) {
       applyDescription(this.state, player.playerId, llmSpeech);
     } else {
-      // 没发言就保持沉默
-      applyDescriptionSkip(this.state, player.playerId);
+      // 大模型不可用/超时/空响应：回退模板发言，避免 AI 集体沉默
+      applyDescription(this.state, player.playerId, generateUndercoverDescription(this.state, player));
     }
   }
 }

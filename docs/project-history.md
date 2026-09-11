@@ -739,6 +739,48 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 - `pnpm --filter @tianma/ai-worker typecheck`：通过
 - `pnpm --filter @tianma/ai-worker lint`：0 errors，仅保留既有 `console` warnings
 
+## 2026-09-11：AI 集体沉默根因修复 + 平票死循环根治（WP20）
+
+### 关键事件
+- **定位 AI 集体沉默的根因：端点空响应 + maxTokens 过小**。用 Node 探针直打
+  `192.168.10.172:5000` 端点实测：`max_tokens=200` 时约 **2/3 请求返回空 content**
+  （`finish_reason=stop`、`completion_tokens` 恰好打满额度——`auto` 路由的后端模型
+  会先消耗隐藏推理，额度小则正文为空），且成功响应也可能耗时近 30s（超过游戏 15s 超时）。
+  空响应/超时/异常在四款游戏统一兜底为"保持沉默"，于是 AI 基本全场不说话。
+- **speech-generator 三项加固**：`maxTokens 200→800`（给隐藏推理留余量，实测 8/8 有效）；
+  空响应/接口错误原地重试一次（这类失败返回快、重试性价比高）；超时不重试（预算已耗尽）。
+  另加 `cleanupSpeech()` 清理模型偶发的元前缀（"可以这样回应："）与整体包裹引号。
+- **四款游戏 LLM 失败兜底由"沉默"改回"模板发言"**：此前为避免模板发言前后矛盾而选择沉默，
+  但配合不稳定端点直接演变成全场哑巴。现在 LLM 失败率已大幅下降，模板只作最后防线，
+  宁可偶尔平淡也不能让 AI 集体失声。`timeoutMs` 统一 15s→30s。
+- **根治谁是小偷/剧本杀的连续平票死循环**：全 AI 对局实测约 **1.7% 陷入 2:2 平票死循环**
+  （票型长期对称、嫌疑度同步累积反而固化目标，80 轮都不收敛，`runToEnd` 500 步上限被击穿，
+  表现为偶发测试失败）。两个引擎补上与谁是卧底一致的 `consecutiveTies` 兜底：
+  连续第 3 次平票按累计嫌疑度强制出局/指认（神偷逃脱在强制结算时同样生效），
+  狼人杀无需此兜底（平票后进入夜晚，狼人必杀人，对局必然推进）。
+
+### 技术细节
+- `apps/ai-worker/src/game/speech-generator.ts`：`attemptLlmSpeech()` 单次尝试（返回
+  `timedOut` 标志决定是否重试）+ `generateLlmSpeech()` 编排两次尝试 + `cleanupSpeech()`
+- `apps/ai-worker/src/game/{werewolf-game,mystery-game,thief-game,undercover-game}.ts`：
+  LLM 失败回退模板发言（`generateDaySpeech` / `generateMysterySpeech` /
+  `generateUndercoverDescription` / `generateInvestigationSpeech`）
+- `apps/ai-worker/src/game/who-is-the-thief-engine.ts`：`resolveThiefTiebreak()` +
+  `resolveThiefVote()` 平票计数；`mystery-engine.ts`：`resolveMysteryTiebreak()` +
+  `resolveMysteryVote()` 平票计数（强制指认走正常结算流程：正确→好人胜，错误→淘汰续轮）
+- 状态字段：`ThiefGameState` / `MysteryGameState` 新增可选 `consecutiveTies`
+  （旧存档缺省 undefined，`?? 0` 兜底，向后兼容）
+- 回归测试：`games.test.ts` 新增小偷/剧本杀"连续 3 轮平票强制结算"用例；
+  "provider 失败保持沉默"断言改为"回退模板发言"
+
+### 验证
+- 真实端点：新参数（mt=800 + 30s 超时 + 空响应重试）下 **8/8 有效发言**，0 空响应 0 超时
+- 收敛性：修复后 **2000 局小偷 + 500 局剧本杀全 AI 对局 0 死循环**（修复前 300 局小偷有 5 局）
+- `pnpm typecheck`：7 包零错误
+- `pnpm test`：全仓 231 测试全绿（ai-core 78 + queue 22 + ai-worker 100 + api 31），
+  连续两轮全仓运行稳定（修复前 3 轮挂 2 轮）
+- `pnpm lint`：0 errors，仅保留既有 `console` warnings
+
 ## 经验教训
 1. Windows 环境下工作区路径处理需要特别小心，`\\?\` 前缀会导致 CMD 和部分 Node 工具异常
 2. 后台进程管理在受限沙箱中不可靠，优先让用户本地终端常驻服务
@@ -762,6 +804,16 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
     教训：同一文件的多个 SearchReplace 必须串行，且改完用 Grep/Read 复核落盘内容。
 12. **"等待人类"和"人类能否行动"必须严格一致。** 狼人杀卡死二本质是 `pendingHumans()` 与
     `step()` 对人类待开枪猎人的判定不一致：一个说他不用行动、一个说在等他行动，推进循环便永久停摆。
+13. **端点返回空 content ≠ 网络问题，先看 token 预算。** 自建 `auto` 路由的后端模型会先消耗
+    隐藏推理再出正文，`max_tokens` 偏小时高概率整段为空且 `finish_reason=stop`。判据：
+    `completion_tokens` 恰好打满额度 + content 为空。修复是给足额度（200→800），不是无脑重试。
+14. **"失败就沉默"式的兜底会把可用性 bug 放大成体验灾难。** 单看每次 LLM 失败兜底为沉默
+    都合理（避免模板发言前后矛盾），但叠加 2/3 空响应率的端点，结果是全场哑巴。
+    兜底策略必须按"最坏情况叠加"评估，而不是单次失败视角。
+15. **多轮投票游戏必须保证收敛性。** 平票/无人出局若无强制结算机制，AI 票型对称时对局
+    永不结束（实测 1.7%）。谁是卧底早有 `consecutiveTies` 兜底而小偷/剧本杀漏配——
+    同类规则在多引擎间复制时要做一次清单核对。偶发的 `runToEnd` 步数超限不是测试问题，
+    是真实 livelock 的信号。
 
 ## 下一步
 - 实现 `mvp-spec §3.4` 的点名下一位发言者（连同后端支持一起加，不留悬空契约字段）

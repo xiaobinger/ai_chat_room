@@ -1,4 +1,4 @@
-import type { ModelProvider } from '../model-provider';
+import { ModelCallError, type ModelProvider } from '../model-provider';
 
 /** 游戏发言生成的通用请求 */
 export interface GameSpeechRequest {
@@ -29,12 +29,31 @@ function logGameLlm(stage: 'request' | 'success' | 'fallback', payload: Record<s
 
 /**
  * 用 LLM 生成游戏发言——替代固定模板，让 AI 像真人一样说话。
- * LLM 不可用时返回 null，调用方回退到模板。
+ * LLM 不可用/超时/空响应时返回 null，调用方回退到模板。
+ *
+ * 实测教训（WP20）：自建端点的 auto 路由会间歇性返回空 content
+ * （token 额度被后端隐藏推理耗尽，max_tokens 偏小时高概率必现），
+ * 成功响应也可能耗时近 30s。因此：
+ * - maxTokens 给足 800，给隐藏推理留出余量；
+ * - 空响应/接口错误时原地重试一次（这类失败返回快，重试性价比高）；
+ * - 超时不重试（时间预算已耗尽，重试只会拖慢对局节奏）。
  */
 export async function generateLlmSpeech(
   provider: ModelProvider,
   request: GameSpeechRequest,
 ): Promise<string | null> {
+  const first = await attemptLlmSpeech(provider, request);
+  if (first.text) return cleanupSpeech(first.text);
+  if (first.timedOut) return null;
+  const second = await attemptLlmSpeech(provider, request);
+  return second.text ? cleanupSpeech(second.text) : null;
+}
+
+/** 单次尝试：返回发言文本；失败返回 null 并标注是否为超时（决定是否重试） */
+async function attemptLlmSpeech(
+  provider: ModelProvider,
+  request: GameSpeechRequest,
+): Promise<{ text: string | null; timedOut: boolean }> {
   const systemPrompt = buildSystemPrompt(request);
   const userPrompt = buildUserPrompt(request);
   const meta = {
@@ -59,24 +78,34 @@ export async function generateLlmSpeech(
         content,
         roleId: null,
       })),
-      maxTokens: 200,
+      maxTokens: 800,
       timeoutMs: request.timeoutMs,
     });
     const text = result.text.trim();
     if (!text || text.length < 2) {
       logGameLlm('fallback', { ...meta, reason: 'empty_response' });
-      return null;
+      return { text: null, timedOut: false };
     }
     logGameLlm('success', { ...meta, length: text.length, tokens: result.tokens, tokensMeasured: result.tokensMeasured });
-    return text;
+    return { text, timedOut: false };
   } catch (error) {
+    const timedOut = error instanceof ModelCallError && error.kind === 'timeout';
     logGameLlm('fallback', {
       ...meta,
-      reason: 'provider_error',
+      reason: timedOut ? 'timeout' : 'provider_error',
       message: error instanceof Error ? error.message : String(error),
     });
-    return null;
+    return { text: null, timedOut };
   }
+}
+
+/** 去掉模型偶发的元前缀（"可以这样回应："）与整体包裹的引号，让发言像真人直说 */
+function cleanupSpeech(text: string): string {
+  return text
+    .replace(/^(可以这样回应|可以这样答|回应|发言|回复|答道|说)[：:]\s*/u, '')
+    .replace(/^[「『“"']+/, '')
+    .replace(/[」』”"']+$/, '')
+    .trim();
 }
 
 function buildSystemPrompt(request: GameSpeechRequest): string {

@@ -253,15 +253,15 @@ export class ThiefGame extends BaseGameEngine {
       phase: '调查发言',
       round: this.state.round,
       recentEvents,
-      timeoutMs: 15_000,
+      timeoutMs: 30_000,
       customHint: customHints[player.role],
     });
 
     if (llmSpeech && llmSpeech.trim().length >= 2) {
       applyThiefSpeech(this.state, player.playerId, llmSpeech);
     } else {
-      // 没发言就保持沉默
-      applyThiefSkip(this.state, player.playerId);
+      // 大模型不可用/超时/空响应：回退模板发言，避免 AI 集体沉默
+      applyThiefSpeech(this.state, player.playerId, generateInvestigationSpeech(this.state, player));
     }
   }
 }

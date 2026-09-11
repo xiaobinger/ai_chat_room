@@ -369,8 +369,14 @@ export function resolveThiefVote(state: ThiefGameState): void {
   }
 
   if (tie || !eliminated || maxVotes === 0) {
-    logEvent(state, 'vote_result', '平票，本轮无人出局');
+    state.consecutiveTies = (state.consecutiveTies ?? 0) + 1;
+    logEvent(state, 'vote_result', `平票，本轮无人出局（连续僵局第 ${state.consecutiveTies} 轮）`);
+    if (state.consecutiveTies >= 3) {
+      resolveThiefTiebreak(state);
+      // 不在这里 return：强制出局后仍需走统一的「胜负判定 + 进入下一轮」收尾
+    }
   } else {
+    state.consecutiveTies = 0;
     const target = findPlayer(state, eliminated);
     // 神偷金蝉脱壳（整局一次）
     if (target.role === 'master_thief' && !state.masterThiefEscapeUsed) {
@@ -397,6 +403,32 @@ export function resolveThiefVote(state: ThiefGameState): void {
   }
 
   nextInvestigationRound(state);
+}
+
+/**
+ * 连续 3 轮平票僵局：按累计嫌疑度最高者强制出局，打破僵局。
+ * 与谁是卧底的 resolveTiebreak 同一套兜底：AI 票型可能长期对称
+ * （实测约 1.7% 的全 AI 对局会陷入 2:2 平票死循环，80 轮都不收敛），
+ * 不加兜底对局将永不结束。
+ */
+function resolveThiefTiebreak(state: ThiefGameState): void {
+  state.consecutiveTies = 0;
+  const alive = getAlivePlayers(state);
+  if (alive.length === 0) return;
+  const sorted = [...alive].sort(
+    (a, b) => b.suspicion - a.suspicion || (a.nickname > b.nickname ? 1 : -1),
+  );
+  const target = sorted[0];
+  // 神偷的逃脱在强制结算时同样生效（整局一次）
+  if (target.role === 'master_thief' && !state.masterThiefEscapeUsed) {
+    state.masterThiefEscapeUsed = true;
+    logEvent(state, 'special_event', `金蝉脱壳！${target.nickname} 是神偷，在强制结算中逃脱！`, undefined, target.nickname);
+    return;
+  }
+  target.isAlive = false;
+  state.accusedPlayerId = target.playerId;
+  const roleLabel = target.role === 'thief' ? '小偷' : target.role === 'master_thief' ? '神偷' : target.role === 'accomplice' ? '同伙' : target.role === 'detective' ? '侦探' : target.role === 'witness' ? '目击者' : '普通市民';
+  logEvent(state, 'vote_result', `连续平票僵局，${target.nickname} 因累计嫌疑最高被强制出局！身份是：${roleLabel}`, undefined, target.nickname);
 }
 
 /** 进入下一轮调查 */
