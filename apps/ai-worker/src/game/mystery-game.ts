@@ -484,14 +484,21 @@ export class MysteryGame extends BaseGameEngine {
         ? `你是凶手的帮凶（身份对其他人隐藏）。你要表现得像一个认真推理的好人，但你的目标是暗中把怀疑引向无辜者、为真凶解围。发言要自然可信，绝不能暴露你是帮凶。如果讨论中有人指向真凶，你要用"合情合理"的方式转移火力；如果证据链快连上，你要设法制造新的疑点。`
         : `你不是凶手，请结合自己的人设、线索和讨论内容，认真推动破案。`;
 
+    // 收集该角色之前的发言，用于防重复
+    const ownPreviousSpeeches = this.state.discussionLog
+      .filter((entry) => entry.playerId === player.playerId)
+      .map((entry) => entry.content);
+
     const llmSpeech = await generateLlmSpeech(this.speechProvider, {
       game: 'murder_mystery',
       nickname: player.nickname,
       gameRole: `${player.character.name}（${player.character.role}）`,
       personality: player.character.personality,
+      gender: player.character.gender,
       phase: phaseLabel,
       round: this.state.round,
       recentEvents,
+      ownPreviousSpeeches,
       timeoutMs: 30_000,
       customHint,
     });

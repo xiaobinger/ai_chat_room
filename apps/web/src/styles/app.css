@@ -506,6 +506,14 @@ cite,.cite-list{display:block}
 .day-message.tts-playing{border:1px solid #7457ff;background:linear-gradient(135deg,#1d1930,#13141a);box-shadow:0 0 12px #7457ff22}
 .day-message.tts-playing .tts-btn{border-color:#7457ff;background:#7457ff;color:#fff;animation:pulse 1s infinite}
 
+/* ===== 发言记录标题行 ===== */
+.section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.section-header h4{margin:0}
+.autoplay-toggle{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;border:1px solid #3a3460;background:#13141a;color:#8a8a99;font-size:11px;font-weight:500;cursor:pointer;transition:all .15s ease}
+.autoplay-toggle:hover{border-color:#5a5470;color:#d4d4dc}
+.autoplay-toggle.active{border-color:#7457ff;background:#1d1930;color:#ad9eff}
+.autoplay-toggle.active:hover{background:#2a2040;color:#fff}
+
 /* ===== 剧情反转横幅 ===== */
 .twist-banner{display:flex;flex-direction:column;gap:6px;margin:8px 0}
 .twist-flash{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:10px;border:1px solid #4a3a6a;background:linear-gradient(135deg,#1e1530,#0d0e13);animation:twistFlashIn .5s ease;position:relative;overflow:hidden}

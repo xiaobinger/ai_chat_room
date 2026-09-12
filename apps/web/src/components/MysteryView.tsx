@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BookOpen, Fingerprint, Link2, Search, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import {
   Countdown,
@@ -16,11 +16,13 @@ import {
   type ActFn,
   type GameViewState,
 } from './game-parts';
+import { computeVoiceParams, type CharacterGender } from '../../../ai-worker/src/game/speech-generator';
 
 interface MysteryCharacter {
   name: string;
   role: string;
   personality: string;
+  gender?: CharacterGender;
   backstory: string;
   secret: string;
   objective: string;
@@ -116,14 +118,20 @@ function emotionLabel(emotion: string): string {
   return EMOTION_LABELS[emotion] ?? emotion;
 }
 
-/** Web Speech API TTS 辅助 */
-function speakText(text: string, onEnd?: () => void): void {
+/** Web Speech API TTS 辅助——根据性别和性格差异化音色 */
+function speakText(
+  text: string,
+  gender: CharacterGender | undefined,
+  personality: string,
+  onEnd?: () => void,
+): void {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'zh-CN';
-  utterance.rate = 1.0;
-  utterance.pitch = 1.0;
+  const { pitch, rate } = computeVoiceParams(gender, personality);
+  utterance.pitch = pitch;
+  utterance.rate = rate;
   if (onEnd) {
     utterance.onend = onEnd;
     utterance.onerror = onEnd;
@@ -203,8 +211,25 @@ export function MysteryView({
   const [ttsText, setTtsText] = useState<string | null>(null);
   const isSpeaking = ttsText !== null;
 
+  // 自动播放开关
+  const [autoPlay, setAutoPlay] = useState(true);
+  const autoPlayRef = useRef(autoPlay);
+  autoPlayRef.current = autoPlay;
+
+  // 已自动播放过的发言索引追踪
+  const autoPlayedRef = useRef<Set<number>>(new Set());
+
+  // 根据 playerId 查找角色信息（性别/性格）
+  const getCharacterInfo = (playerId: string): { gender?: CharacterGender; personality: string } => {
+    const player = view.players.find((p) => p.playerId === playerId);
+    return {
+      gender: player?.character?.gender,
+      personality: player?.character?.personality ?? '',
+    };
+  };
+
   // 播放某条发言的 TTS
-  const playTts = (text: string, e?: React.MouseEvent) => {
+  const playTts = (text: string, gender: CharacterGender | undefined, personality: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (isSpeaking) {
       stopSpeaking();
@@ -212,7 +237,40 @@ export function MysteryView({
       return;
     }
     setTtsText(text);
-    speakText(text, () => setTtsText(null));
+    speakText(text, gender, personality, () => setTtsText(null));
+  };
+
+  // 自动播放新发言（当开关打开时）
+  useEffect(() => {
+    if (!autoPlay) return;
+    const log = view.discussionLog ?? [];
+    if (log.length === 0) return;
+
+    const lastEntry = log[log.length - 1];
+    const lastIndex = log.length - 1;
+
+    // 只自动播放自己不是发言者的 AI 发言，且未播放过
+    if (autoPlayedRef.current.has(lastIndex)) return;
+    if (lastEntry.playerId === myPlayerId) return;
+
+    autoPlayedRef.current.add(lastIndex);
+    const { gender, personality } = getCharacterInfo(lastEntry.playerId);
+    setTtsText(lastEntry.content);
+    speakText(lastEntry.content, gender, personality, () => setTtsText(null));
+  }, [view.discussionLog, autoPlay, myPlayerId]);
+
+  // 切换自动播放时清空已播放记录
+  const toggleAutoPlay = () => {
+    setAutoPlay((prev) => {
+      const next = !prev;
+      if (next) {
+        autoPlayedRef.current.clear();
+      } else {
+        stopSpeaking();
+        setTtsText(null);
+      }
+      return next;
+    });
   };
 
   // 离开游戏时停止语音播放
@@ -526,10 +584,21 @@ export function MysteryView({
       {/* 讨论记录 */}
       {(view.discussionLog ?? []).length > 0 && (
         <div className="game-section">
-          <h4>发言记录</h4>
+          <div className="section-header">
+            <h4>发言记录</h4>
+            <button
+              className={`autoplay-toggle ${autoPlay ? 'active' : ''}`}
+              onClick={toggleAutoPlay}
+              title={autoPlay ? '点击关闭自动播放' : '点击开启自动播放'}
+            >
+              <Volume2 size={13} />
+              {autoPlay ? '自动播放中' : '自动播放已关'}
+            </button>
+          </div>
           <div className="day-messages">
             {(view.discussionLog ?? []).map((entry, index) => {
               const isTtsPlaying = ttsText === entry.content;
+              const characterInfo = getCharacterInfo(entry.playerId);
               return (
                 <div key={index} className={`day-message ${isTtsPlaying ? 'tts-playing' : ''}`}>
                   <b>
@@ -544,8 +613,8 @@ export function MysteryView({
                   <span>{entry.content}</span>
                   <button
                     className="tts-btn"
-                    onClick={(e) => playTts(entry.content, e)}
-                    title={isTtsPlaying ? '停止语音' : '播放语音'}
+                    onClick={(e) => playTts(entry.content, characterInfo.gender, characterInfo.personality, e)}
+                    title={isTtsPlaying ? '停止语音' : `播放语音（${characterInfo.gender === 'male' ? '男声' : characterInfo.gender === 'female' ? '女声' : '默认'}）`}
                   >
                     {isTtsPlaying ? <VolumeX size={13} /> : <Volume2 size={13} />}
                   </button>
