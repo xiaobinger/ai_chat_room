@@ -961,6 +961,61 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 - lucide-react 图标名称需精确匹配，`FlaskCross` 不存在，正确名称为 `FlaskConical`
 - 共享组件（PhaseBadge/RoleCard/WinnerBanner）的 props 接口可能与新需求不匹配，需适配而非强行传参
 
+## 2026-09-12：剧本杀 AI 发言优化 + 氛围音乐系统
+
+### 关键事件
+- **AI 发言质量提升**：解决 AI 角色发言死板、驴唇不对马嘴、胡编乱造、重复发言、角色定位不符等问题
+- **氛围音乐系统**：引入程序化情绪音景，根据游戏阶段自动切换不同氛围
+
+### AI 发言优化技术细节
+- **提示词工程**：
+  - 新增 `buildFewShotExamples()` 函数，提供 4 种人格类型（豪爽直率/谨慎理性/温柔敏感/精明圆滑）的 few-shot 示例
+  - 系统提示词增加性别声明行、防重复约束、编号规则列表
+  - 用户提示词按阶段（自我介绍/圆桌讨论/公开指控/最终指认）给出差异化引导
+- **角色数据增强**：为所有 56 个剧本杀角色添加 `gender` 字段（男/女）
+- **后端传递优化**：`speakFor()` 方法新增传递 `gender` 和 `ownPreviousSpeeches` 给 LLM，实现性别感知和防重复
+- **前端 TTS 差异化音色**：
+  - 新增 `computeVoiceParams(gender, personality)` 函数，根据性别和性格计算音高/语速
+  - 男性基线：pitch=0.9, rate=0.95；女性基线：pitch=1.2, rate=1.05
+  - 性格微调：精明圆滑 +0.05 pitch，豪爽直率 +0.05 rate 等
+- **自动播放**：新增自动播放开关，AI 发言时自动朗读（可关闭）
+
+### 氛围音乐系统技术细节
+- **MysteryAudioEngine**：基于 Web Audio API 的程序化音景生成器
+- **6 种情绪音景**：
+  | 阶段 | 情绪 | 音色特征 |
+  |------|------|----------|
+  | introduction | mysterious | 低频 drone + 稀疏钟声，神秘悬疑 |
+  | investigation | tense | 不规则节奏 + 下行音阶，紧张探索 |
+  | discussion | contemplative | 缓慢 pad + 环境噪音，沉闷思索 |
+  | accusation | passionate | 急促弦乐 + 上升旋律，激情冲突 |
+  | voting | suspenseful | 心跳低频 + 高频泛音，悬念压抑 |
+  | reveal | climactic | 铜管齐奏 + 宽频铺底，高潮揭晓 |
+- **音频图结构**：多音层振荡器 → LFO 调制（颤音/震音）→ 低通滤波器 → 包络增益 → 主输出 + 卷积混响
+- **前端控制器**：播放/暂停按钮 + 音量滑杆 + 情绪标签显示（中文）
+- **阶段自动切换**：`useEffect` 监听 `view.phase`，变化时调用 `setMood()` 平滑过渡
+
+### 修改文件
+- `apps/ai-worker/src/game/speech-generator.ts` — 提示词重构 + computeVoiceParams
+- `apps/ai-worker/src/game/mystery-game.ts` — speakFor 传递 gender/ownPreviousSpeeches
+- `apps/ai-worker/src/game/mystery-engine.ts` — getPlayerView 暴露 gender/personality
+- `apps/ai-worker/src/game/mystery-types.ts` — CharacterCard 添加 gender，56 个角色赋值
+- `apps/web/src/components/MysteryView.tsx` — TTS 差异化 + 自动播放 + 音乐控制 UI
+- `apps/web/src/components/mystery-audio.ts` — 新增：氛围音乐引擎
+- `apps/web/src/components/game-parts.tsx` — PlayerView character 类型添加 gender
+- `apps/web/src/styles/app.css` — 音乐控制器样式
+
+### 验证
+- `pnpm lint`：0 errors
+- `pnpm test`：31 tests 全部通过
+- `pnpm typecheck`：6/7 包通过（web 包 Three.js 类型错误为 WP24 遗留，待 pnpm install 修复）
+
+### 经验教训
+- Web Audio API 程序化生成音景无需外部音频文件，适合氛围背景音
+- 卷积混响用生成的脉冲响应模拟空间感，比简单延迟效果更自然
+- LFO 调制（低频振荡器）给静态音色添加动态感，避免"电子音"僵硬感
+- few-shot 示例显著改善 LLM 角色一致性，比纯文字描述更有效
+
 ## 下一步
 - 运行 `pnpm install` 安装 Three.js 依赖，消除剩余 TS 类型错误
 - 3D 模式性能优化：降低移动设备上的后处理开销

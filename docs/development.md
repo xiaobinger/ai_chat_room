@@ -200,9 +200,11 @@ PM2 配置在 `ecosystem.config.cjs`（双进程：`tianma-api` + `tianma-worker
 - **人格深入决策层**：`who-is-the-thief-engine.ts` 不再只让人格影响发言模板，`冷静观察型 / 强势带队型 / 圆滑周旋型 / 直觉冲票型` 现在会影响公开焦点判断、跟票对象和投票激进度
 - **卧底票型更像真人**：`who-is-undercover-engine.ts` 中 `谨慎试探型 / 联想发散型 / 稳健跟随型 / 大胆误导型` 已分别影响保留投票、追离群描述、跟随共识和主动带偏的选择
 - **剧本杀角色性格接入怀疑链**：`mystery-engine.ts` 开始直接读取角色卡 `character.personality`，用它影响嫌疑排序、发言语气和最终投票，不再只有“统一的推理模板”
-- **阶段化氛围背景音乐**：新增 `apps/web/src/hooks/useAdaptiveGameBgm.ts`，通过 `Web Audio API` 在无素材依赖的前提下合成游戏氛围音乐，按游戏类型与阶段映射不同情绪，不需要额外维护音频资源
-- **GameRoom 音乐控制条**：`apps/web/src/pages/GameRoom.tsx` 新增音乐控制条，展示当前曲风标签、氛围说明、开关和音量滑杆；首次受浏览器策略限制时可点击“点我唤醒音乐”恢复播放
-- **音乐映射策略**：狼人杀区分夜晚/白天/投票压迫感，剧本杀区分入场/搜证/讨论/指控节奏，谁是小偷偏潜行与轻快锁票，谁是卧底偏试探与锁票紧张感，结算阶段统一切到收束型尾声
+- **剧本杀氛围音乐引擎（MysteryAudioEngine）**：新增 `apps/web/src/components/mystery-audio.ts`，基于 Web Audio API 程序化生成 6 种情绪音景，无需外部音频文件
+- **音频图结构**：多音层振荡器 → LFO 调制（颤音/震音）→ 低通滤波器 → 包络增益 → 主输出 + 卷积混响 + 环境噪音
+- **阶段自动切换**：introduction→mysterious, investigation→tense, discussion→contemplative, accusation→passionate, voting→suspenseful, reveal→climactic
+- **前端控制器**：MysteryView 工具栏新增播放/暂停按钮 + 音量滑杆 + 情绪标签显示（中文）
+- **懒加载初始化**：首次点击播放按钮时初始化 AudioContext（满足浏览器自动播放策略要求）
 - **主持总结卡组件**：`apps/web/src/components/game-parts.tsx` 新增 `HostSummaryCard`，统一承载“主持总结 / 当前焦点 / 高亮标签”，避免三套页面各自拼接临时样式
 - **三游戏演出层补强**：`ThiefGameView`、`UndercoverView`、`MysteryView` 现已把 `publicNotes` 的最新一条提升为主持总结卡，并把最近 3 条共识做焦点高亮，形成“音乐 + 阶段 + 主持播报”一体化演出感
 - **当前验证备注**：本轮前端展示改动已通过 `typecheck` 与 `lint`；全量 `pnpm test` 中仍偶发触发剧本杀既有随机阶段测试，但 `apps/ai-worker` 单独复跑已通过，说明本轮未引入新的前端逻辑回归
@@ -282,6 +284,37 @@ PM2 配置在 `ecosystem.config.cjs`（双进程：`tianma-api` + `tianma-worker
 - **交互流程**：点击行动按钮 → 进入交互模式 → 点击 3D 角色选中（高亮 + 缩放）→ 底部确认面板执行动作
 - **集成方式**：`GameRoom.tsx` 新增 `is3DMode` 状态 + 右上角浮动切换按钮（`.werewolf3d-toggle`），条件渲染 `Werewolf3DView` 或 `WerewolfView`
 - **样式**：`app.css` 新增 `.werewolf3d*` 系列（Grid 布局 HUD+Stage+Sidebar，面板毛玻璃效果，响应式窄屏适配）
+
+### 剧本杀 AI 发言优化 + TTS 差异化音色（2026-09-12）
+
+- **提示词工程升级**：
+  - `speech-generator.ts` 新增 `buildFewShotExamples()` 函数，提供 4 种人格类型（豪爽直率/谨慎理性/温柔敏感/精明圆滑）的 few-shot 示例，每种 3 条示范发言
+  - 系统提示词增加：性别声明行（"你的性别是男/女，注意用词和语气符合性别特征"）、防重复约束（"不要重复自己已经说过的任何句子"）、编号规则列表（8 条）
+  - 用户提示词按阶段差异化：自我介绍阶段要求"用一句话介绍自己身份+一个线索暗示"，圆桌讨论要求"引用至少一条线索或他人发言"，公开指控要求"明确指出怀疑对象+至少两条理由"，最终指认要求"给出最终答案+总结推理链"
+- **角色数据增强**：`mystery-types.ts` 的 `CharacterCard` 接口新增 `gender?: 'male' | 'female'` 字段，为全部 56 个角色赋值
+- **后端传递优化**：`mystery-game.ts` 的 `speakFor()` 方法新增传递 `gender` 和 `ownPreviousSpeeches`（从 discussionLog 过滤该玩家历史发言）给 `generateLlmSpeech()`
+- **服务器暴露角色信息**：`mystery-engine.ts` 的 `getPlayerView()` 在两种视角（玩家/观众）的 character 对象中新增 `gender` 和 `personality` 字段
+- **前端 TTS 差异化音色**：
+  - 新增 `computeVoiceParams(gender, personality)` 导出函数，返回 `{pitch, rate}`
+  - 性别基线：male={0.9, 0.95}, female={1.2, 1.05}, unknown={1.0, 1.0}
+  - 性格微调：精明圆滑/谨慎理性 +0.05 pitch，豪爽直率/强势带队 +0.05 rate，温柔敏感/胆小 -0.05 pitch，clamp 到 [0.5, 2.0]
+- **TTS 自动播放**：新增 `autoPlay` 状态开关，AI 发言时自动朗读（跳过玩家自己的发言），可手动关闭
+- **前端类型同步**：`game-parts.tsx` 的 `PlayerView.character` 类型新增 `gender` 字段
+
+### 剧本杀氛围音乐引擎（2026-09-12）
+
+- **核心类**：`MysteryAudioEngine`（`mystery-audio.ts`）
+- **情绪音景类型**：`MoodType = 'mysterious' | 'tense' | 'contemplative' | 'passionate' | 'suspenseful' | 'climactic' | 'silent'`
+- **阶段映射**：`PHASE_MOOD` 记录将 6 个游戏阶段映射到对应情绪
+- **音色预设**：`MOOD_PRESETS` 定义每种情绪的多层配置（振荡器类型/频率/增益/LFO速率/滤波器参数）
+- **音频图**：多音层 → 振荡器 → 滤波器 → 包络增益 → 主输出 + 卷积混响；附加环境白噪音层
+- **卷积混响**：`createImpulseResponse()` 生成 2.5 秒衰减脉冲响应模拟空间感
+- **LFO 调制**：低频振荡器调制包络增益，产生颤音/震音效果
+- **状态管理**：`_mood`, `_volume`, `_isPlaying`, `_isInitialized` 四个核心状态
+- **公共 API**：`init()`, `play()`, `pause()`, `resume()`, `setMood()`, `setVolume()`, `dispose()`
+- **前端集成**：`MysteryView.tsx` 工具栏新增音乐控制器（播放/暂停按钮 + 音量滑杆 + 情绪标签）
+- **阶段自动切换**：`useEffect` 监听 `view.phase`，变化时调用 `setMood()` 平滑过渡（1.5 秒渐入 + 0.8 秒主音量调整）
+- **响应式适配**：窄屏下音乐控制换行到底部，按钮居中
 
 ## 已知未完成
 
