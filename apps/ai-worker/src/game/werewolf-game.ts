@@ -152,7 +152,7 @@ export class WerewolfGame extends BaseGameEngine {
   }
 
   getView(playerId: string | null, isJudge?: boolean): Record<string, unknown> {
-    return getPlayerView(this.state, playerId, isJudge ?? false);
+    return { ...getPlayerView(this.state, playerId, isJudge ?? false), hostedPlayers: Array.from(this.hostedPlayers) };
   }
 
   getRoles(): Record<string, string> {
@@ -262,6 +262,12 @@ export class WerewolfGame extends BaseGameEngine {
         break;
       case 'judge_speak':
         applyJudgeSpeak(this.state, action.playerId, action.content ?? '');
+        break;
+      case 'host_ai':
+        this.setHostAi(action.playerId, true);
+        break;
+      case 'unhost_ai':
+        this.setHostAi(action.playerId, false);
         break;
       default:
         throw new GameError('unknown_action', `未知动作：${action.type}`);

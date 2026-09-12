@@ -7,6 +7,7 @@ import type {
 } from './who-is-the-thief-types';
 import { STOLEN_ITEMS, CRIME_SCENES, CLUES, SPECIAL_EVENTS } from './who-is-the-thief-types';
 import { GameError } from './errors';
+import { generateRandomVoiceProfile } from './speech-generator';
 
 const pick = <T>(list: T[]): T | undefined =>
   list.length > 0 ? list[Math.floor(Math.random() * list.length)] : undefined;
@@ -166,6 +167,7 @@ export function initThiefGameState(
     suspicion: 0,
     hasFramed: false,
     hasRevealedClue: false,
+    voiceProfile: generateRandomVoiceProfile(p.playerId),
   }));
 
   const thiefTeamIds = playerStates
@@ -733,6 +735,7 @@ export function getThiefView(state: ThiefGameState, playerId: string | null) {
       role: finished ? p.role : p.playerId === playerId ? p.role : undefined,
       isMe: p.playerId === playerId,
       hasSpoken: p.hasSpoken,
+      character: p.voiceProfile,
     })),
     myRole: me?.role,
     myPersona: me?.persona,

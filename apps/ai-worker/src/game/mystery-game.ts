@@ -241,7 +241,7 @@ export class MysteryGame extends BaseGameEngine {
   }
 
   getView(playerId: string | null, _isJudge?: boolean): Record<string, unknown> {
-    return getPlayerView(this.state, playerId) as Record<string, unknown>;
+    return { ...getPlayerView(this.state, playerId), hostedPlayers: Array.from(this.hostedPlayers) } as Record<string, unknown>;
   }
 
   getRoles(): Record<string, string> {
@@ -310,6 +310,12 @@ export class MysteryGame extends BaseGameEngine {
         return;
       case 'vote_abstain':
         this.state = applyMysteryVote(this.state, action.playerId, null);
+        return;
+      case 'host_ai':
+        this.setHostAi(action.playerId, true);
+        return;
+      case 'unhost_ai':
+        this.setHostAi(action.playerId, false);
         return;
       default:
         throw new GameError('unknown_action', `未知动作：${action.type}`);

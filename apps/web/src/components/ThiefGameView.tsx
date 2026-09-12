@@ -1,4 +1,4 @@
-import { Eye, Lightbulb, MessageCircle, Search } from 'lucide-react';
+import { Bot, Eye, Lightbulb, MessageCircle, Search, Volume2, VolumeX } from 'lucide-react';
 import {
   Countdown,
   HostSummaryCard,
@@ -17,6 +17,8 @@ import {
   type ActFn,
   type GameViewState,
 } from './game-parts';
+import type { VoiceContext } from '../../../ai-worker/src/game/speech-generator';
+import { useGameTts } from '../hooks/useGameTts';
 
 const ROLE_LABELS: Record<string, string> = {
   thief: '小偷',
@@ -41,6 +43,12 @@ const PERSONA_DESCRIPTIONS: Record<string, string> = {
   强势带队型: '喜欢主动立焦点、带讨论节奏，也更容易形成票型。',
   圆滑周旋型: '会留余地、顺势补刀，发言更像在试探全场反应。',
   直觉冲票型: '更看重第一感觉和现场气氛，容易快速点名施压。',
+};
+
+const THIEF_PHASE_CONTEXT: Record<string, VoiceContext> = {
+  investigation: 'contemplative',
+  voting: 'suspenseful',
+  result: 'climactic',
 };
 
 const THIEF_PHASE_COPY: Record<string, { title: string; subtitle: string; tone: 'neutral' | 'warn' | 'danger' }> = {
@@ -89,6 +97,16 @@ export function ThiefGameView({
     .slice(0, 3);
   const highlightedNames = focusPlayers.map((player) => `${player.seatNumber ? `${player.seatNumber}号` : ''}${player.nickname}`);
   const focusTerms = focusPlayers.map((player) => player.nickname);
+  const thiefSpeechLog = (view.speechLog ?? []).map((s) => ({
+    playerId: s.playerId,
+    content: s.content,
+  }));
+  const tts = useGameTts({
+    view,
+    myPlayerId,
+    speechLog: thiefSpeechLog,
+    phaseContextMap: THIEF_PHASE_CONTEXT,
+  });
 
   return (
     <div className="game-view thief">
@@ -103,6 +121,20 @@ export function ThiefGameView({
         <PlayerCount players={view.players} />
         <Countdown deadline={finished ? null : deadline} onExpire={refresh} />
       </div>
+      {myPlayerId && !finished && (() => {
+        const hostedPlayers = (view.hostedPlayers as string[]) ?? [];
+        const isHosted = hostedPlayers.includes(myPlayerId);
+        return (
+          <button
+            className={`ai-host-btn ${isHosted ? 'active' : ''}`}
+            onClick={() => void act(isHosted ? 'unhost_ai' : 'host_ai')}
+            title={isHosted ? '点击取消 AI 托管' : '点击让 AI 代替你发言和行动'}
+          >
+            <Bot size={14} />
+            {isHosted ? 'AI 托管中' : 'AI 托管'}
+          </button>
+        );
+      })()}
 
       <PhaseSpotlight
         phaseKey={`${view.round}-${view.phase}`}
@@ -272,12 +304,25 @@ export function ThiefGameView({
       {/* 发言记录 */}
       {(view.speechLog ?? []).length > 0 && (
         <div className="game-section">
-          <h4>发言记录</h4>
+          <div className="tts-toolbar">
+            <h4>发言记录</h4>
+            <button className="tts-autoplay-btn" onClick={tts.toggleAutoPlay} title={tts.autoPlay ? '关闭自动朗读' : '开启自动朗读'}>
+              {tts.autoPlay ? <Volume2 size={14} /> : <VolumeX size={14} />}
+              {tts.autoPlay ? '自动朗读开' : '自动朗读关'}
+            </button>
+          </div>
           <div className="day-messages">
             {(view.speechLog ?? []).map((s, index) => (
               <div key={index} className="day-message">
                 <b>{s.nickname}：</b>
                 <span>{s.content}</span>
+                <button
+                  className="tts-play-btn"
+                  onClick={(e) => tts.playTts(s.content, tts.getCharacterInfo(s.playerId), e)}
+                  title="朗读"
+                >
+                  <Volume2 size={12} />
+                </button>
               </div>
             ))}
             <TypingIndicator players={view.players} typingPlayerId={view.typingPlayerId} />

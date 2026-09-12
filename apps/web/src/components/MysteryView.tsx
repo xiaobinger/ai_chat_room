@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BookOpen, Fingerprint, Link2, Music, Music2, Search, Sparkles, Volume2, VolumeX } from 'lucide-react';
+import { BookOpen, Bot, Fingerprint, Link2, Music, Music2, Search, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import {
   Countdown,
   HostSummaryCard,
@@ -16,15 +16,9 @@ import {
   type ActFn,
   type GameViewState,
 } from './game-parts';
-import {
-  computeVoiceParams,
-  PHASE_CONTEXT,
-  type CharacterGender,
-  type VoiceContext,
-  type VoiceProfile,
-} from '../../../ai-worker/src/game/speech-generator';
+import { PHASE_CONTEXT, type CharacterGender } from '../../../ai-worker/src/game/speech-generator';
 import { MysteryAudioEngine, PHASE_MOOD, type MoodType } from './mystery-audio';
-import { selectVoiceForProfile } from './tts-voice-selector';
+import { useGameTts } from '../hooks/useGameTts';
 
 /** 情绪标签（中文） */
 const MOOD_LABELS: Record<MoodType, string> = {
@@ -139,43 +133,6 @@ function emotionLabel(emotion: string): string {
   return EMOTION_LABELS[emotion] ?? emotion;
 }
 
-/** Web Speech API TTS 辅助——根据角色生理特征 + 语境差异化音色 */
-function speakText(
-  text: string,
-  profile: VoiceProfile | undefined,
-  context: VoiceContext | undefined,
-  onEnd?: () => void,
-): void {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'zh-CN';
-
-  // 1. 选择对应角色特征的系统音色
-  const selectedVoice = selectVoiceForProfile(profile);
-  if (selectedVoice) {
-    utterance.voice = selectedVoice;
-  }
-
-  // 2. 综合生理特征 + 语境计算 pitch/rate/volume
-  const { pitch, rate, volume } = computeVoiceParams(profile, context);
-  utterance.pitch = pitch;
-  utterance.rate = rate;
-  utterance.volume = volume;
-
-  if (onEnd) {
-    utterance.onend = onEnd;
-    utterance.onerror = onEnd;
-  }
-  window.speechSynthesis.speak(utterance);
-}
-
-function stopSpeaking(): void {
-  if (typeof window !== 'undefined' && window.speechSynthesis) {
-    window.speechSynthesis.cancel();
-  }
-}
-
 const CONFLICT_ACTION_LABELS: Record<string, string> = {
   shout: '怒吼',
   threaten: '威胁',
@@ -238,17 +195,17 @@ export function MysteryView({
   const highlightedSuspects = suspectBoard.map((player) => `${player.seatNumber ? `${player.seatNumber}号` : ''}${player.nickname}`);
   const focusTerms = suspectBoard.flatMap((player) => [player.nickname, player.character?.name ?? '']).filter(Boolean);
 
-  // 获取当前说话者对应的 TTS 文本
-  const [ttsText, setTtsText] = useState<string | null>(null);
-  const isSpeaking = ttsText !== null;
-
-  // 自动播放开关
-  const [autoPlay, setAutoPlay] = useState(true);
-  const autoPlayRef = useRef(autoPlay);
-  autoPlayRef.current = autoPlay;
-
-  // 已自动播放过的发言索引追踪
-  const autoPlayedRef = useRef<Set<number>>(new Set());
+  // ===== TTS 语音播放（共享 hook） =====
+  const speechLog = (view.discussionLog ?? []).map((entry) => ({
+    playerId: entry.playerId,
+    content: entry.content,
+  }));
+  const tts = useGameTts({
+    view,
+    myPlayerId,
+    speechLog,
+    phaseContextMap: PHASE_CONTEXT,
+  });
 
   // ===== 氛围音乐引擎 =====
   const audioEngineRef = useRef<MysteryAudioEngine | null>(null);
@@ -310,69 +267,6 @@ export function MysteryView({
     };
   }, []);
 
-  // 当前游戏阶段的语境
-  const currentContext: VoiceContext = PHASE_CONTEXT[view.phase] ?? 'calm';
-
-  // 根据 playerId 查找角色完整信息（性别/年龄/身高/体重/性格）
-  const getCharacterInfo = (playerId: string): VoiceProfile => {
-    const player = view.players.find((p) => p.playerId === playerId);
-    return {
-      gender: player?.character?.gender,
-      age: player?.character?.age,
-      height: player?.character?.height,
-      weight: player?.character?.weight,
-      personality: player?.character?.personality ?? '',
-    };
-  };
-
-  // 播放某条发言的 TTS
-  const playTts = (text: string, profile: VoiceProfile, e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    if (isSpeaking) {
-      stopSpeaking();
-      setTtsText(null);
-      return;
-    }
-    setTtsText(text);
-    speakText(text, profile, currentContext, () => setTtsText(null));
-  };
-
-  // 自动播放新发言（当开关打开时）
-  useEffect(() => {
-    if (!autoPlay) return;
-    const log = view.discussionLog ?? [];
-    if (log.length === 0) return;
-
-    const lastEntry = log[log.length - 1];
-    const lastIndex = log.length - 1;
-
-    // 只自动播放自己不是发言者的 AI 发言，且未播放过
-    if (autoPlayedRef.current.has(lastIndex)) return;
-    if (lastEntry.playerId === myPlayerId) return;
-
-    autoPlayedRef.current.add(lastIndex);
-    const profile = getCharacterInfo(lastEntry.playerId);
-    setTtsText(lastEntry.content);
-    speakText(lastEntry.content, profile, currentContext, () => setTtsText(null));
-  }, [view.discussionLog, autoPlay, myPlayerId, currentContext]);
-
-  // 切换自动播放时清空已播放记录
-  const toggleAutoPlay = () => {
-    setAutoPlay((prev) => {
-      const next = !prev;
-      if (next) {
-        autoPlayedRef.current.clear();
-      } else {
-        stopSpeaking();
-        setTtsText(null);
-      }
-      return next;
-    });
-  };
-
-  // 离开游戏时停止语音播放
-  useEffect(() => () => stopSpeaking(), []);
-
   const conflictLevel = view.conflictLevel ?? 0;
   const conflictCritical = conflictLevel >= 70;
 
@@ -418,6 +312,20 @@ export function MysteryView({
         </div>
         <Countdown deadline={finished ? null : deadline} onExpire={refresh} />
       </div>
+      {myPlayerId && !finished && (() => {
+        const hostedPlayers = (view.hostedPlayers as string[]) ?? [];
+        const isHosted = hostedPlayers.includes(myPlayerId);
+        return (
+          <button
+            className={`ai-host-btn ${isHosted ? 'active' : ''}`}
+            onClick={() => void act(isHosted ? 'unhost_ai' : 'host_ai')}
+            title={isHosted ? '点击取消 AI 托管' : '点击让 AI 代替你发言和行动'}
+          >
+            <Bot size={14} />
+            {isHosted ? 'AI 托管中' : 'AI 托管'}
+          </button>
+        );
+      })()}
 
       <PhaseSpotlight
         phaseKey={`${view.round}-${view.phase}`}
@@ -712,18 +620,18 @@ export function MysteryView({
           <div className="section-header">
             <h4>发言记录</h4>
             <button
-              className={`autoplay-toggle ${autoPlay ? 'active' : ''}`}
-              onClick={toggleAutoPlay}
-              title={autoPlay ? '点击关闭自动播放' : '点击开启自动播放'}
+              className={`autoplay-toggle ${tts.autoPlay ? 'active' : ''}`}
+              onClick={tts.toggleAutoPlay}
+              title={tts.autoPlay ? '点击关闭自动播放' : '点击开启自动播放'}
             >
               <Volume2 size={13} />
-              {autoPlay ? '自动播放中' : '自动播放已关'}
+              {tts.autoPlay ? '自动播放中' : '自动播放已关'}
             </button>
           </div>
           <div className="day-messages">
             {(view.discussionLog ?? []).map((entry, index) => {
-              const isTtsPlaying = ttsText === entry.content;
-              const characterInfo = getCharacterInfo(entry.playerId);
+              const isTtsPlaying = tts.ttsText === entry.content;
+              const characterInfo = tts.getCharacterInfo(entry.playerId);
               return (
                 <div key={index} className={`day-message ${isTtsPlaying ? 'tts-playing' : ''}`}>
                   <b>
@@ -738,7 +646,7 @@ export function MysteryView({
                   <span>{entry.content}</span>
                   <button
                     className="tts-btn"
-                    onClick={(e) => playTts(entry.content, characterInfo, e)}
+                    onClick={(e) => tts.playTts(entry.content, characterInfo, e)}
                     title={isTtsPlaying ? '停止语音' : `播放语音（${characterInfo.gender === 'male' ? '男声' : characterInfo.gender === 'female' ? '女声' : '默认'}）`}
                   >
                     {isTtsPlaying ? <VolumeX size={13} /> : <Volume2 size={13} />}

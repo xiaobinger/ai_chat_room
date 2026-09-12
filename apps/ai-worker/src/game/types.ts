@@ -11,6 +11,14 @@ export interface PlayerState {
   isAlive: boolean;
   /** 累计被投票数（AI 启发式用，不泄露身份） */
   suspicion: number;
+  /** 音色档案（用于前端 TTS 音色差异化） */
+  voiceProfile?: {
+    gender?: 'male' | 'female' | 'unknown';
+    age?: number;
+    height?: number;
+    weight?: number;
+    personality?: string;
+  };
 }
 
 export interface GameLogEntry {

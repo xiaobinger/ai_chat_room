@@ -525,6 +525,23 @@ cite,.cite-list{display:block}
 .autoplay-toggle.active{border-color:#7457ff;background:#1d1930;color:#ad9eff}
 .autoplay-toggle.active:hover{background:#2a2040;color:#fff}
 
+/* ===== TTS 工具栏 + 播放按钮 ===== */
+.tts-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.tts-toolbar h4{margin:0}
+.tts-autoplay-btn{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;border:1px solid #3a3460;background:#13141a;color:#8a8a99;font-size:11px;font-weight:500;cursor:pointer;transition:all .15s ease}
+.tts-autoplay-btn:hover{border-color:#5a5470;color:#d4d4dc}
+.tts-autoplay-btn.active{border-color:#7457ff;background:#1d1930;color:#ad9eff}
+.tts-autoplay-btn.active:hover{background:#2a2040;color:#fff}
+.tts-play-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:5px;border:1px solid #3a3460;background:#1d1930;color:#ad9eff;cursor:pointer;margin-left:6px;flex:0 0 auto;transition:all .15s ease}
+.tts-play-btn:hover{border-color:#7457ff;background:#2a2040;color:#fff}
+.tts-play-btn:active{transform:scale(.92)}
+
+/* ===== AI 托管按钮 ===== */
+.ai-host-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:8px;border:1px solid #3a3460;background:#13141a;color:#8a8a99;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s ease;margin:6px 0}
+.ai-host-btn:hover{border-color:#5a5470;color:#d4d4dc}
+.ai-host-btn.active{border-color:#ff9f43;background:#2a2010;color:#ff9f43}
+.ai-host-btn.active:hover{background:#3a2a15;color:#ffb366}
+
 /* ===== 剧情反转横幅 ===== */
 .twist-banner{display:flex;flex-direction:column;gap:6px;margin:8px 0}
 .twist-flash{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:10px;border:1px solid #4a3a6a;background:linear-gradient(135deg,#1e1530,#0d0e13);animation:twistFlashIn .5s ease;position:relative;overflow:hidden}

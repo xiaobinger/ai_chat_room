@@ -15,6 +15,9 @@ import type { EngineAction, GamePlayerInfo } from './errors';
 export abstract class BaseGameEngine {
   constructor(protected readonly players: GamePlayerInfo[]) {}
 
+  /** 开启了 AI 托管的人类玩家集合 */
+  protected readonly hostedPlayers = new Set<string>();
+
   abstract step(): boolean | Promise<boolean>;
   abstract pendingHumans(): string[];
   abstract phaseDeadlineMs(): number;
@@ -24,6 +27,20 @@ export abstract class BaseGameEngine {
   abstract getState(): Record<string, unknown>;
   abstract isFinished(): boolean;
 
+  /** 切换 AI 托管状态 */
+  setHostAi(playerId: string, enabled: boolean): void {
+    if (enabled) {
+      this.hostedPlayers.add(playerId);
+    } else {
+      this.hostedPlayers.delete(playerId);
+    }
+  }
+
+  /** 玩家是否由 AI 托管（人类主动开启或超时自动托管） */
+  isHosted(playerId: string): boolean {
+    return this.hostedPlayers.has(playerId);
+  }
+
   /** 游戏结束后按玩家结算：playerId -> { won, role }；未结束返回 null */
   abstract getResults(): Record<string, { won: boolean; role: string }> | null;
 
@@ -31,6 +48,7 @@ export abstract class BaseGameEngine {
   abstract getRoles(): Record<string, string>;
 
   protected isAi(playerId: string): boolean {
+    if (this.hostedPlayers.has(playerId)) return true;
     return this.players.find((p) => p.playerId === playerId)?.isAi ?? false;
   }
 }

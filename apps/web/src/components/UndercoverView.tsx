@@ -1,4 +1,4 @@
-import { Sparkles } from 'lucide-react';
+import { Bot, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import {
   Countdown,
   HostSummaryCard,
@@ -17,6 +17,8 @@ import {
   type ActFn,
   type GameViewState,
 } from './game-parts';
+import type { VoiceContext } from '../../../ai-worker/src/game/speech-generator';
+import { useGameTts } from '../hooks/useGameTts';
 
 interface UndercoverViewState extends GameViewState {
   myWord?: string;
@@ -40,6 +42,12 @@ const PERSONA_DESCRIPTIONS: Record<string, string> = {
   联想发散型: '更喜欢从画面、情绪和场景切入，描述更有氛围感。',
   稳健跟随型: '会顺着多数人的方向补充，尽量避免第一个暴露自己。',
   大胆误导型: '敢主动换角度带节奏，试着把大家往错误方向引。',
+};
+
+const UNDERCOVER_PHASE_CONTEXT: Record<string, VoiceContext> = {
+  describing: 'contemplative',
+  voting: 'suspenseful',
+  result: 'climactic',
 };
 
 const UNDERCOVER_PHASE_COPY: Record<string, { title: string; subtitle: string; tone: 'neutral' | 'warn' | 'danger' }> = {
@@ -75,6 +83,16 @@ export function UndercoverView({
     .slice(0, 3);
   const highlightedNames = focusPlayers.map((player) => `${player.seatNumber ? `${player.seatNumber}号` : ''}${player.nickname}`);
   const focusTerms = focusPlayers.map((player) => player.nickname);
+  const undercoverSpeechLog = (view.descriptions ?? []).map((d) => ({
+    playerId: d.playerId,
+    content: d.content,
+  }));
+  const tts = useGameTts({
+    view,
+    myPlayerId,
+    speechLog: undercoverSpeechLog,
+    phaseContextMap: UNDERCOVER_PHASE_CONTEXT,
+  });
 
   return (
     <div className="game-view undercover">
@@ -89,6 +107,20 @@ export function UndercoverView({
         <PlayerCount players={view.players} />
         <Countdown deadline={finished ? null : deadline} onExpire={refresh} />
       </div>
+      {myPlayerId && !finished && (() => {
+        const hostedPlayers = (view.hostedPlayers as string[]) ?? [];
+        const isHosted = hostedPlayers.includes(myPlayerId);
+        return (
+          <button
+            className={`ai-host-btn ${isHosted ? 'active' : ''}`}
+            onClick={() => void act(isHosted ? 'unhost_ai' : 'host_ai')}
+            title={isHosted ? '点击取消 AI 托管' : '点击让 AI 代替你发言和行动'}
+          >
+            <Bot size={14} />
+            {isHosted ? 'AI 托管中' : 'AI 托管'}
+          </button>
+        );
+      })()}
 
       <PhaseSpotlight
         phaseKey={`${view.round}-${view.phase}`}
@@ -206,14 +238,27 @@ export function UndercoverView({
       {/* 描述记录 */}
       {(view.descriptions ?? []).length > 0 && !finished && (
         <div className="game-section">
-          <h4>
-            <Sparkles size={14} /> 本轮描述
-          </h4>
+          <div className="tts-toolbar">
+            <h4>
+              <Sparkles size={14} /> 本轮描述
+            </h4>
+            <button className="tts-autoplay-btn" onClick={tts.toggleAutoPlay} title={tts.autoPlay ? '关闭自动朗读' : '开启自动朗读'}>
+              {tts.autoPlay ? <Volume2 size={14} /> : <VolumeX size={14} />}
+              {tts.autoPlay ? '自动朗读开' : '自动朗读关'}
+            </button>
+          </div>
           <div className="day-messages">
             {(view.descriptions ?? []).map((d, index) => (
               <div key={index} className={`day-message ${d.playerId === myPlayerId ? 'mine' : ''}`}>
                 <b>{d.nickname}：</b>
                 <span>{d.content}</span>
+                <button
+                  className="tts-play-btn"
+                  onClick={(e) => tts.playTts(d.content, tts.getCharacterInfo(d.playerId), e)}
+                  title="朗读"
+                >
+                  <Volume2 size={12} />
+                </button>
               </div>
             ))}
             {view.phase === 'describing' && (

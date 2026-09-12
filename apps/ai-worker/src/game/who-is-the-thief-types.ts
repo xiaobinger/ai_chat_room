@@ -22,6 +22,14 @@ export interface ThiefPlayerState {
   hasFramed: boolean;
   /** 目击者是否已揭示线索（整局一次） */
   hasRevealedClue: boolean;
+  /** 音色档案（用于前端 TTS 音色差异化） */
+  voiceProfile?: {
+    gender?: 'male' | 'female' | 'unknown';
+    age?: number;
+    height?: number;
+    weight?: number;
+    personality?: string;
+  };
 }
 
 export interface ThiefSpeech {

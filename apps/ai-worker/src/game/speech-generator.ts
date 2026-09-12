@@ -20,6 +20,32 @@ export interface VoiceProfile {
   personality?: string;
 }
 
+const GENDERS: CharacterGender[] = ['male', 'female'];
+const PERSONALITY_POOL = ['开朗', '沉稳', '内向', '豪爽', '细腻', '幽默', '严肃', '温柔', '急躁', '冷静'];
+
+/** 生成随机音色档案（用于没有预设角色的游戏，如狼人杀/小偷/卧底） */
+export function generateRandomVoiceProfile(seed?: string): VoiceProfile {
+  const rng = seed ? seededRandom(seed) : Math.random;
+  const gender = GENDERS[Math.floor(rng() * GENDERS.length)];
+  const age = 18 + Math.floor(rng() * 50);
+  const height = gender === 'male' ? 160 + Math.floor(rng() * 25) : 150 + Math.floor(rng() * 20);
+  const weight = gender === 'male' ? 55 + Math.floor(rng() * 30) : 45 + Math.floor(rng() * 20);
+  const personality = PERSONALITY_POOL[Math.floor(rng() * PERSONALITY_POOL.length)];
+  return { gender, age, height, weight, personality };
+}
+
+function seededRandom(seed: string): () => number {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = Math.imul(31, h) + seed.charCodeAt(i) | 0;
+  }
+  return () => {
+    h = Math.imul(h ^ (h >>> 15), h | 1);
+    h ^= h + Math.imul(h ^ (h >>> 7), h | 61);
+    return ((h ^ (h >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 /**
  * 语境类型——当前游戏阶段的氛围/情绪
  * 影响发言的语调和节奏

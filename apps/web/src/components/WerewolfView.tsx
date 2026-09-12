@@ -1,4 +1,4 @@
-import { Crosshair, Eye, FlaskConical, Gavel, Moon, PawPrint, Shield, MessageSquareQuote } from 'lucide-react';
+import { Bot, Crosshair, Eye, FlaskConical, Gavel, Moon, PawPrint, Shield, MessageSquareQuote, Volume2, VolumeX } from 'lucide-react';
 import {
   Countdown,
   PhaseBadge,
@@ -18,6 +18,8 @@ import {
   type GamePlayerView,
   type GameViewState,
 } from './game-parts';
+import type { VoiceContext } from '../../../ai-worker/src/game/speech-generator';
+import { useGameTts } from '../hooks/useGameTts';
 
 const ROLE_LABELS: Record<string, string> = {
   werewolf: '狼人',
@@ -74,6 +76,14 @@ interface WerewolfViewState extends GameViewState {
   nightVictim_full?: string | null;
 }
 
+const WEREWOLF_PHASE_CONTEXT: Record<string, VoiceContext> = {
+  night: 'mysterious',
+  day: 'contemplative',
+  vote: 'suspenseful',
+  final_speech: 'climactic',
+  finished: 'calm',
+};
+
 export function WerewolfView({
   view,
   myPlayerId,
@@ -94,6 +104,18 @@ export function WerewolfView({
   const myRoleLabel = myRole ? ROLE_LABELS[myRole] : undefined;
   const iAmWerewolf = myRole === 'werewolf';
   const isJudge = Boolean(view.isJudge);
+
+  // ===== TTS 语音播放 =====
+  const daySpeechLog = (view.dayMessages ?? []).map((m) => ({
+    playerId: m.playerId,
+    content: m.content,
+  }));
+  const tts = useGameTts({
+    view,
+    myPlayerId,
+    speechLog: daySpeechLog,
+    phaseContextMap: WEREWOLF_PHASE_CONTEXT,
+  });
 
   const alivePlayers = view.players.filter((p) => p.isAlive);
   const me = view.players.find((p) => p.playerId === myPlayerId);
@@ -124,6 +146,20 @@ export function WerewolfView({
         <PlayerCount players={view.players} />
         <Countdown deadline={finished ? null : deadline} onExpire={refresh} />
       </div>
+      {!isJudge && myPlayerId && !finished && (() => {
+        const hostedPlayers = (view.hostedPlayers as string[]) ?? [];
+        const isHosted = hostedPlayers.includes(myPlayerId);
+        return (
+          <button
+            className={`ai-host-btn ${isHosted ? 'active' : ''}`}
+            onClick={() => void act(isHosted ? 'unhost_ai' : 'host_ai')}
+            title={isHosted ? '点击取消 AI 托管' : '点击让 AI 代替你发言和行动'}
+          >
+            <Bot size={14} />
+            {isHosted ? 'AI 托管中' : 'AI 托管'}
+          </button>
+        );
+      })()}
 
       <PhaseSpotlight
         phaseKey={`${view.round}-${view.phase}`}
@@ -457,14 +493,35 @@ export function WerewolfView({
             />
           )}
           <div className="day-messages">
-            {(view.dayMessages ?? []).map((m, index) => (
-              <div key={index} className="day-message">
-                <b>{m.nickname}：</b>
-                <span>{m.content}</span>
-              </div>
-            ))}
+            {(view.dayMessages ?? []).map((m, index) => {
+              const isTtsPlaying = tts.ttsText === m.content;
+              const characterInfo = tts.getCharacterInfo(m.playerId);
+              return (
+                <div key={index} className={`day-message ${isTtsPlaying ? 'tts-playing' : ''}`}>
+                  <b>{m.nickname}：</b>
+                  <span>{m.content}</span>
+                  <button
+                    className="tts-btn"
+                    onClick={(e) => tts.playTts(m.content, characterInfo, e)}
+                    title={isTtsPlaying ? '停止语音' : `播放语音（${characterInfo.gender === 'male' ? '男声' : characterInfo.gender === 'female' ? '女声' : '默认'}）`}
+                  >
+                    {isTtsPlaying ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                  </button>
+                </div>
+              );
+            })}
             <TypingIndicator players={view.players} typingPlayerId={view.typingPlayerId} />
             {(!view.dayMessages || view.dayMessages.length === 0) && !view.typingPlayerId && <p className="hint">还没有人发言。</p>}
+          </div>
+          <div className="tts-toolbar">
+            <button
+              className={`autoplay-toggle ${tts.autoPlay ? 'active' : ''}`}
+              onClick={tts.toggleAutoPlay}
+              title={tts.autoPlay ? '点击关闭自动播放' : '点击开启自动播放'}
+            >
+              <Volume2 size={13} />
+              {tts.autoPlay ? '自动播放中' : '自动播放已关'}
+            </button>
           </div>
         </div>
       )}

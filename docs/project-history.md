@@ -1098,6 +1098,51 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 - TypeScript 对 spread 操作不会做 excess property checking，但显式添加被 Omit 排除的属性会报错
 - `CharacterGender` 包含 `'unknown'` 而 `CharacterCard.gender` 不包含，需要在边界处做类型映射
 
+## 2026-09-12：全游戏 TTS 语音朗读 + AI 托管系统
+
+### 关键事件
+- **共享 TTS Hook**：创建 `apps/web/src/hooks/useGameTts.ts`，封装语音合成逻辑（autoPlay、per-message 播放、语境化音色参数），供所有 4 款游戏复用
+- **TTS 全覆盖**：狼人杀、谁是小偷、谁是卧底均接入 TTS（剧本杀已有），每款游戏定义独立的 `PHASE_CONTEXT` 映射
+  - 狼人杀：night→mysterious, day→contemplative, vote→suspenseful, final_speech→climactic
+  - 谁是小偷：investigation→contemplative, voting→suspenseful, result→climactic
+  - 谁是卧底：describing→contemplative, voting→suspenseful, result→climactic
+- **随机音色档案**：`speech-generator.ts` 新增 `generateRandomVoiceProfile(seed?)`，基于玩家 ID 种子生成一致的性别/年龄/身高/体重/性格，确保每局每个玩家有独特且稳定的音色
+- **后端音色同步**：狼人杀、小偷、卧底的 PlayerState 均新增 `voiceProfile` 字段，getView 时通过 `character` 字段暴露给前端
+- **AI 托管系统**：
+  - `BaseGameEngine` 新增 `hostedPlayers` Set + `setHostAi()` + `isHosted()` + 修改 `isAi()` 将托管玩家视为 AI
+  - 所有 4 款游戏引擎 `handleAction()` 支持 `host_ai`/`unhost_ai` 动作
+  - 所有 4 款游戏视图在工具栏添加"AI 托管"按钮，人类玩家可随时切换托管状态
+  - `getView()` 返回 `hostedPlayers: string[]` 数组，前端据此高亮已托管状态
+- **CSS 新增**：`.tts-toolbar`、`.tts-autoplay-btn`、`.tts-play-btn`、`.ai-host-btn` 样式
+
+### 修改文件
+- `apps/web/src/hooks/useGameTts.ts` — 新建，共享 TTS Hook
+- `apps/web/src/components/WerewolfView.tsx` — TTS 集成 + AI 托管按钮
+- `apps/web/src/components/ThiefGameView.tsx` — TTS 集成 + AI 托管按钮
+- `apps/web/src/components/UndercoverView.tsx` — TTS 集成 + AI 托管按钮
+- `apps/web/src/components/MysteryView.tsx` — 重构为共享 Hook + AI 托管按钮
+- `apps/web/src/styles/app.css` — TTS 工具栏 + AI 托管按钮样式
+- `apps/ai-worker/src/game/base-engine.ts` — hostedPlayers + setHostAi + isHosted + isAi 修改
+- `apps/ai-worker/src/game/speech-generator.ts` — generateRandomVoiceProfile + seededRandom
+- `apps/ai-worker/src/game/types.ts` — werewolf PlayerState 添加 voiceProfile
+- `apps/ai-worker/src/game/who-is-the-thief-types.ts` — ThiefPlayerState 添加 voiceProfile
+- `apps/ai-worker/src/game/who-is-undercover-types.ts` — UndercoverPlayerState 添加 voiceProfile
+- `apps/ai-worker/src/game/werewolf-game.ts` — 初始化 voiceProfile + getView 暴露 + host_ai/unhost_ai
+- `apps/ai-worker/src/game/who-is-the-thief-engine.ts` — 同上
+- `apps/ai-worker/src/game/who-is-undercover-engine.ts` — 同上
+- `apps/ai-worker/src/game/mystery-game.ts` — getView 暴露 hostedPlayers + host_ai/unhost_ai
+- `apps/ai-worker/src/game/werewolf-engine.ts` — getView 暴露 character + hostedPlayers
+
+### 验证
+- `pnpm typecheck`：7/7 包通过（web 包 Three.js 错误为 WP24 遗留）
+- `pnpm test`：31 tests 全部通过
+- `pnpm lint`：0 errors
+
+### 经验教训
+- 共享 Hook 模式消除了 4 个游戏视图中重复的 TTS 逻辑（~80 行重复代码）
+- `[key: string]: unknown` 的 `GameViewState` 设计允许逐步添加 `hostedPlayers` 等新字段而无需修改每个视图的类型定义
+- 将 `hostedPlayers` 从 Set 转为 Array 暴露给前端，因为 JSON 序列化不支持 Set
+
 ## 下一步
 - 运行 `pnpm install` 安装 Three.js 依赖，消除剩余 TS 类型错误
 - 3D 模式性能优化：降低移动设备上的后处理开销

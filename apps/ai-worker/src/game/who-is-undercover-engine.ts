@@ -6,6 +6,7 @@ import type {
 } from './who-is-undercover-types';
 import { WORD_PAIRS } from './who-is-undercover-types';
 import { GameError } from './errors';
+import { generateRandomVoiceProfile } from './speech-generator';
 
 /** 根据人数决定卧底数量 */
 export function undercoverCount(playerCount: number): number {
@@ -118,6 +119,7 @@ export function initUndercoverState(
       isAlive: true,
       hasDescribed: false,
       suspicion: 0,
+      voiceProfile: generateRandomVoiceProfile(p.playerId),
     })),
     civilianWord,
     undercoverWord,
@@ -568,6 +570,7 @@ export function getUndercoverView(state: UndercoverGameState, playerId: string |
       word: finished ? p.word : undefined,
       isMe: p.playerId === playerId,
       hasDescribed: p.hasDescribed,
+      character: p.voiceProfile,
     })),
     myWord: me?.word,
     myRole: me?.role,

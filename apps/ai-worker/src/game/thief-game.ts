@@ -68,7 +68,7 @@ export class ThiefGame extends BaseGameEngine {
   }
 
   getView(playerId: string | null, _isJudge?: boolean): Record<string, unknown> {
-    return getThiefView(this.state, playerId) as Record<string, unknown>;
+    return { ...getThiefView(this.state, playerId), hostedPlayers: Array.from(this.hostedPlayers) } as Record<string, unknown>;
   }
 
   getRoles(): Record<string, string> {
@@ -116,6 +116,12 @@ export class ThiefGame extends BaseGameEngine {
         break;
       case 'vote_abstain':
         applyThiefVote(this.state, action.playerId, null);
+        break;
+      case 'host_ai':
+        this.setHostAi(action.playerId, true);
+        break;
+      case 'unhost_ai':
+        this.setHostAi(action.playerId, false);
         break;
       default:
         throw new GameError('unknown_action', `未知动作：${action.type}`);

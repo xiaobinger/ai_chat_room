@@ -1,5 +1,6 @@
 import type { GameState, GameLogEntry, PlayerState, WerewolfRole, SeerCheckResult } from './types';
 import { GameError } from './errors';
+import { generateRandomVoiceProfile } from './speech-generator';
 
 /** 根据玩家数量分配角色 */
 export function assignRoles(playerIds: string[]): Record<string, WerewolfRole> {
@@ -45,6 +46,7 @@ export function initGameState(
       role: assignments[p.playerId],
       isAlive: true,
       suspicion: 0,
+      voiceProfile: generateRandomVoiceProfile(p.playerId),
     })),
     wolfVotes: {},
     seerCheckedTonight: [],
@@ -600,6 +602,7 @@ export function getJudgeView(state: GameState): Record<string, unknown> {
       isAlive: p.isAlive,
       role: p.role,
       isMe: false,
+      character: p.voiceProfile,
     })),
     myRole: null,
     speechStatus: state.speechStatus,
@@ -642,6 +645,7 @@ export function getPlayerView(state: GameState, playerId: string | null, isJudge
       isAlive: p.isAlive,
       role: finished ? p.role : p.playerId === playerId ? p.role : undefined,
       isMe: p.playerId === playerId,
+      character: p.voiceProfile,
     })),
     myRole: me?.role,
     speechStatus: state.speechStatus,

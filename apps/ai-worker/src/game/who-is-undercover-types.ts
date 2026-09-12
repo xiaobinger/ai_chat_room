@@ -20,6 +20,14 @@ export interface UndercoverPlayerState {
   suspicion: number;
   /** 出局轮次 */
   eliminatedRound?: number;
+  /** 音色档案（用于前端 TTS 音色差异化） */
+  voiceProfile?: {
+    gender?: 'male' | 'female' | 'unknown';
+    age?: number;
+    height?: number;
+    weight?: number;
+    personality?: string;
+  };
 }
 
 export interface UndercoverDescription {

@@ -64,7 +64,7 @@ export class UndercoverGame extends BaseGameEngine {
   }
 
   getView(playerId: string | null, _isJudge?: boolean): Record<string, unknown> {
-    return getUndercoverView(this.state, playerId) as Record<string, unknown>;
+    return { ...getUndercoverView(this.state, playerId), hostedPlayers: Array.from(this.hostedPlayers) } as Record<string, unknown>;
   }
 
   getRoles(): Record<string, string> {
@@ -106,6 +106,12 @@ export class UndercoverGame extends BaseGameEngine {
         break;
       case 'vote_abstain':
         applyUndercoverVote(this.state, action.playerId, null);
+        break;
+      case 'host_ai':
+        this.setHostAi(action.playerId, true);
+        break;
+      case 'unhost_ai':
+        this.setHostAi(action.playerId, false);
         break;
       default:
         throw new GameError('unknown_action', `未知动作：${action.type}`);
