@@ -21,7 +21,7 @@ import {
   getPlayerView,
   summarizeMysteryPublicNote,
 } from './mystery-engine';
-import { generateLlmSpeech } from './speech-generator';
+import { generateLlmSpeech, PHASE_CONTEXT } from './speech-generator';
 
 /** 解析 LLM 输出的凶手独白，按【标签】提取各段落 */
 function parseMonologueText(text: string, fallback: MurdererMonologue): MurdererMonologue {
@@ -495,7 +495,15 @@ export class MysteryGame extends BaseGameEngine {
       gameRole: `${player.character.name}（${player.character.role}）`,
       personality: player.character.personality,
       gender: player.character.gender,
+      voiceProfile: {
+        gender: player.character.gender,
+        age: player.character.age,
+        height: player.character.height,
+        weight: player.character.weight,
+        personality: player.character.personality,
+      },
       phase: phaseLabel,
+      context: PHASE_CONTEXT[this.state.phase] ?? 'calm',
       round: this.state.round,
       recentEvents,
       ownPreviousSpeeches,

@@ -3,6 +3,36 @@ import { ModelCallError, type ModelProvider } from '../model-provider';
 /** 角色性别：影响 TTS 音色和语言风格 */
 export type CharacterGender = 'male' | 'female' | 'unknown';
 
+/**
+ * 角色生理特征——用于音色差异化算法
+ *
+ * 音色映射原理：
+ * - 性别：男声低沉（低 pitch），女声清亮（高 pitch）
+ * - 年龄：年幼→偏高偏快（稚嫩），年老→偏低偏慢（苍老）
+ * - 身高：高个→低 pitch（共鸣腔大），矮个→高 pitch（共鸣腔小）
+ * - 体重：重→低 pitch + 高音量（浑厚有力），轻→高 pitch + 低音量（单薄纤细）
+ */
+export interface VoiceProfile {
+  gender?: CharacterGender;
+  age?: number;
+  height?: number;   // cm
+  weight?: number;   // kg
+  personality?: string;
+}
+
+/**
+ * 语境类型——当前游戏阶段的氛围/情绪
+ * 影响发言的语调和节奏
+ */
+export type VoiceContext =
+  | 'mysterious'   // 神秘：序幕阶段，缓慢、低沉、悬疑
+  | 'tense'        // 紧张：调查阶段，急促、压低、警觉
+  | 'contemplative' // 沉思： discussion阶段，平稳、理性、有停顿
+  | 'passionate'   // 激情：指控阶段、高亢、激动、有力
+  | 'suspenseful'  // 悬疑：投票阶段、犹豫、迟疑、不确定
+  | 'climactic'    // 高潮：揭晓阶段、强烈、顿挫、戏剧性
+  | 'calm';         // 平静：默认状态
+
 /** 游戏发言生成的通用请求 */
 export interface GameSpeechRequest {
   /** 游戏类型 */
@@ -15,8 +45,12 @@ export interface GameSpeechRequest {
   personality: string;
   /** 角色性别 */
   gender?: CharacterGender;
+  /** 角色生理特征（年龄/身高/体重） */
+  voiceProfile?: VoiceProfile;
   /** 当前阶段 */
   phase: string;
+  /** 当前语境/氛围（影响语调） */
+  context?: VoiceContext;
   /** 轮次 */
   round: number;
   /** 最近对话/事件（上下文感知用） */
@@ -29,9 +63,188 @@ export interface GameSpeechRequest {
   customHint?: string;
 }
 
-function logGameLlm(stage: 'request' | 'success' | 'fallback', payload: Record<string, unknown>): void {
-  const line = JSON.stringify(payload);
-  console.warn(`[game-llm] ${stage} ${line}`);
+/** 音色参数——用于前端 SpeechSynthesisUtterance */
+export interface VoiceParams {
+  pitch: number;    // 0.0 ~ 2.0（音高，1.0 为默认）
+  rate: number;     // 0.1 ~ 10.0（语速，1.0 为默认）
+  volume: number;   // 0.0 ~ 1.0（音量）
+}
+
+/**
+ * 阶段→语境映射：自动根据游戏阶段选择语境
+ */
+export const PHASE_CONTEXT: Record<string, VoiceContext> = {
+  introduction: 'mysterious',
+  investigation: 'tense',
+  discussion: 'contemplative',
+  accusation: 'passionate',
+  voting: 'suspenseful',
+  reveal: 'climactic',
+};
+
+/**
+ * 音色参数计算——综合角色生理特征 + 性格 + 语境
+ *
+ * 算法说明：
+ * 1. 基准值：pitch=1.0, rate=1.0, volume=1.0
+ * 2. 性别调整：男 -0.25/+0.12，女 +0.25/+0.05
+ * 3. 年龄调整：以 30 岁为基准，每偏离 10 岁 pitch ∓0.04，rate ∓0.03
+ * 4. 身高调整：以 170cm 为基准，每偏离 10cm pitch ∓0.03
+ * 5. 体重调整：以 70kg 为基准，每偏离 10kg volume ±0.05，pitch ∓0.02
+ * 6. 性格微调：±0.05~0.1
+ * 7. 语境微调：根据当前氛围进一步调整
+ *
+ * 输出范围限制：
+ * - pitch: [0.5, 1.5]
+ * - rate: [0.7, 1.3]
+ * - volume: [0.4, 1.0]
+ */
+export function computeVoiceParams(
+  profile: VoiceProfile | undefined,
+  context: VoiceContext | undefined,
+): VoiceParams {
+  if (!profile) {
+    return applyContext({ pitch: 1.0, rate: 1.0, volume: 1.0 }, context);
+  }
+
+  const { gender, age, height, weight, personality } = profile;
+
+  // 1. 性别基准
+  let pitch = 1.0;
+  let rate = 1.0;
+  let volume = 1.0;
+
+  if (gender === 'male') {
+    pitch -= 0.25;
+    rate -= 0.12;
+    volume += 0.05;
+  } else if (gender === 'female') {
+    pitch += 0.25;
+    rate += 0.05;
+    volume -= 0.02;
+  }
+
+  // 2. 年龄调整（以 30 岁为基准）
+  if (age !== undefined && !isNaN(age)) {
+    const ageDelta = (age - 30) / 10;
+    pitch -= ageDelta * 0.04;
+    rate -= ageDelta * 0.03;
+    if (age > 60) {
+      rate -= 0.05;
+      pitch -= 0.03;
+    } else if (age < 18) {
+      pitch += 0.05;
+      rate += 0.05;
+    }
+  }
+
+  // 3. 身高调整（以 170cm 为基准，影响共鸣感）
+  if (height !== undefined && !isNaN(height)) {
+    const heightDelta = (height - 170) / 10;
+    pitch -= heightDelta * 0.03;
+    volume += heightDelta * 0.02;
+  }
+
+  // 4. 体重调整（以 70kg 为基准，影响厚度）
+  if (weight !== undefined && !isNaN(weight)) {
+    const weightDelta = (weight - 70) / 10;
+    volume += weightDelta * 0.05;
+    pitch -= weightDelta * 0.02;
+    if (weight > 90) {
+      rate -= 0.03;
+    } else if (weight < 50) {
+      rate += 0.03;
+    }
+  }
+
+  // 5. 性格微调
+  if (personality) {
+    if (/豪爽|直率|暴躁|果断|强势|霸气/.test(personality)) {
+      rate = Math.min(1.3, rate + 0.08);
+      pitch = Math.max(0.5, pitch - 0.06);
+      volume = Math.min(1.0, volume + 0.05);
+    } else if (/谨慎|冷静|沉稳|理性|专业|内敛/.test(personality)) {
+      rate = Math.max(0.7, rate - 0.08);
+      pitch = Math.max(0.5, pitch - 0.04);
+    } else if (/敏感|温柔|胆小|内向|善良|忧郁|细腻/.test(personality)) {
+      pitch = Math.min(1.5, pitch + 0.06);
+      rate = Math.max(0.7, rate - 0.04);
+      volume = Math.max(0.4, volume - 0.05);
+    } else if (/精明|圆滑|狡诈|狡猾|城府/.test(personality)) {
+      rate = Math.min(1.3, rate + 0.05);
+      pitch = Math.max(0.5, pitch - 0.03);
+    } else if (/威严|霸气|高贵|强势/.test(personality)) {
+      volume = Math.min(1.0, volume + 0.08);
+      pitch = Math.max(0.5, pitch - 0.05);
+      rate = Math.max(0.7, rate - 0.05);
+    } else if (/活泼|外向|俏皮|开朗/.test(personality)) {
+      rate = Math.min(1.3, rate + 0.06);
+      pitch = Math.min(1.5, pitch + 0.04);
+    } else if (/阴郁|沉默|木讷|内向/.test(personality)) {
+      rate = Math.max(0.7, rate - 0.06);
+      pitch = Math.max(0.5, pitch - 0.02);
+      volume = Math.max(0.4, volume - 0.03);
+    }
+  }
+
+  return applyContext(
+    {
+      pitch: clamp(Math.round(pitch * 100) / 100, 0.5, 1.5),
+      rate: clamp(Math.round(rate * 100) / 100, 0.7, 1.3),
+      volume: clamp(Math.round(volume * 100) / 100, 0.4, 1.0),
+    },
+    context,
+  );
+}
+
+/** 语境微调参数 */
+function applyContext(params: VoiceParams, context: VoiceContext | undefined): VoiceParams {
+  const p = { ...params };
+
+  switch (context) {
+    case 'mysterious':
+      p.pitch = clamp(p.pitch - 0.05, 0.5, 1.5);
+      p.rate = clamp(p.rate - 0.08, 0.7, 1.3);
+      p.volume = clamp(p.volume - 0.05, 0.4, 1.0);
+      break;
+    case 'tense':
+      p.rate = clamp(p.rate + 0.05, 0.7, 1.3);
+      p.pitch = clamp(p.pitch + 0.03, 0.5, 1.5);
+      p.volume = clamp(p.volume - 0.03, 0.4, 1.0);
+      break;
+    case 'contemplative':
+      p.rate = clamp(p.rate - 0.05, 0.7, 1.3);
+      p.pitch = clamp(p.pitch - 0.02, 0.5, 1.5);
+      break;
+    case 'passionate':
+      p.pitch = clamp(p.pitch + 0.08, 0.5, 1.5);
+      p.rate = clamp(p.rate + 0.05, 0.7, 1.3);
+      p.volume = clamp(p.volume + 0.1, 0.4, 1.0);
+      break;
+    case 'suspenseful':
+      p.rate = clamp(p.rate - 0.1, 0.7, 1.3);
+      p.pitch = clamp(p.pitch - 0.03, 0.5, 1.5);
+      p.volume = clamp(p.volume - 0.05, 0.4, 1.0);
+      break;
+    case 'climactic':
+      p.pitch = clamp(p.pitch + 0.05, 0.5, 1.5);
+      p.rate = clamp(p.rate - 0.03, 0.7, 1.3);
+      p.volume = clamp(p.volume + 0.05, 0.4, 1.0);
+      break;
+    case 'calm':
+    default:
+      break;
+  }
+
+  return {
+    pitch: Math.round(p.pitch * 100) / 100,
+    rate: Math.round(p.rate * 100) / 100,
+    volume: Math.round(p.volume * 100) / 100,
+  };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 /**
@@ -54,6 +267,11 @@ export async function generateLlmSpeech(
   if (first.timedOut) return null;
   const second = await attemptLlmSpeech(provider, request);
   return second.text ? cleanupSpeech(second.text) : null;
+}
+
+function logGameLlm(stage: 'request' | 'success' | 'fallback', payload: Record<string, unknown>): void {
+  const line = JSON.stringify(payload);
+  console.warn(`[game-llm] ${stage} ${line}`);
 }
 
 /** 单次尝试：返回发言文本；失败返回 null 并标注是否为超时（决定是否重试） */
@@ -248,50 +466,4 @@ export function pickVariedTemplate(
   return templates[index];
 }
 
-/**
- * 根据角色性别和性格计算 TTS 语音参数。
- * 返回 pitch（音高）和 rate（语速）用于 SpeechSynthesisUtterance。
- *
- * 性别基准：
- * - 男性：pitch 0.8-1.0，rate 0.9-1.0（低沉、稳重）
- * - 女性：pitch 1.1-1.3，rate 1.0-1.1（清亮、稍快）
- *
- * 性格微调：
- * - 豪爽/暴躁：rate +0.1，pitch -0.1
- * - 谨慎/沉稳：rate -0.1，pitch -0.05
- * - 敏感/温柔：pitch +0.1，rate -0.05
- * - 精明/狡猾：rate +0.05，pitch -0.05
- */
-export function computeVoiceParams(
-  gender: CharacterGender | undefined,
-  personality: string,
-): { pitch: number; rate: number } {
-  // 性别基准（更激进的差异化，补偿系统可能只有女声的局限）
-  let pitch = 1.0;
-  let rate = 1.0;
 
-  if (gender === 'male') {
-    pitch = 0.75;  // 更低的音高模拟男声
-    rate = 0.88;   // 更慢的语速模拟沉稳
-  } else if (gender === 'female') {
-    pitch = 1.25;  // 更高的音高模拟女声
-    rate = 1.05;
-  }
-
-  // 性格微调
-  if (/豪爽|直率|暴躁|果断|强势/.test(personality)) {
-    rate = Math.min(1.3, rate + 0.1);
-    pitch = Math.max(0.5, pitch - 0.1);
-  } else if (/谨慎|冷静|沉稳|理性|专业/.test(personality)) {
-    rate = Math.max(0.7, rate - 0.1);
-    pitch = Math.max(0.5, pitch - 0.05);
-  } else if (/敏感|温柔|胆小|内向|善良|忧郁/.test(personality)) {
-    pitch = Math.min(1.5, pitch + 0.1);
-    rate = Math.max(0.7, rate - 0.05);
-  } else if (/精明|圆滑|狡诈|狡猾/.test(personality)) {
-    rate = Math.min(1.3, rate + 0.05);
-    pitch = Math.max(0.5, pitch - 0.05);
-  }
-
-  return { pitch: Math.round(pitch * 100) / 100, rate: Math.round(rate * 100) / 100 };
-}

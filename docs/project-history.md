@@ -1016,6 +1016,52 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 - LFO 调制（低频振荡器）给静态音色添加动态感，避免"电子音"僵硬感
 - few-shot 示例显著改善 LLM 角色一致性，比纯文字描述更有效
 
+## 2026-09-12：TTS 多因子音色差异化（性别/年龄/身高/体重/语境）
+
+### 关键事件
+- **问题**：用户反馈 TTS 语音"都是女声啊"，仅靠 pitch 微调无法产生可信的男女声差异
+- **根因**：`speakText` 只设置了 pitch/rate，从未选择不同的 Voice 对象
+- **解决方案**：引入音色参数算法 + Voice 对象选择 + 语境感知
+
+### 音色算法技术细节
+- **新增类型系统**：
+  - `VoiceProfile`：gender + age + height + weight + personality
+  - `VoiceContext`：mysterious/tense/contemplative/passionate/suspenseful/climactic/calm
+  - `VoiceParams`：pitch + rate + volume
+  - `PHASE_CONTEXT`：阶段→语境映射（introduction→mysterious, investigation→tense 等）
+- **`computeVoiceParams()` 多因子算法**：
+  1. 性别基准：男 -0.25 pitch/-0.12 rate/+0.05 volume；女 +0.25/+0.05/-0.02
+  2. 年龄调整：以 30 岁为基准，每偏离 10 岁 pitch ∓0.04, rate ∓0.03；幼/老额外修正
+  3. 身高调整：以 170cm 为基准，每偏离 10cm pitch ∓0.03
+  4. 体重调整：以 70kg 为基准，每偏离 10kg volume ±0.05, pitch ∓0.02
+  5. 性格微调：7 种人格类型各 ±0.05~0.1
+  6. 语境微调：在生理特征基础上叠加环境氛围修正
+- **Voice 选择增强**：
+  - 新增 `selectVoiceForProfile()` 接受完整 VoiceProfile
+  - 候选音色按 pitchHint 排序（男声 0.85，女声 1.15，老年 0.7，儿童 1.3）
+  - 根据年龄/身高/体重计算目标 pitchHint，选择距离最小的音色
+- **角色数据补充**：全部 56 个剧本杀角色添加 age/height/weight
+
+### 修改文件
+- `apps/ai-worker/src/game/speech-generator.ts` — 新增 VoiceProfile/VoiceContext/VoiceParams 类型 + 重写 computeVoiceParams + PHASE_CONTEXT 映射
+- `apps/ai-worker/src/game/mystery-types.ts` — CharacterCard 添加 age?/height?/weight?
+- `apps/ai-worker/src/game/mystery-engine.ts` — getPlayerView 暴露 age/height/weight
+- `apps/ai-worker/src/game/mystery-game.ts` — speakFor 传递 voiceProfile + context
+- `apps/web/src/components/tts-voice-selector.ts` — 新增 selectVoiceForProfile，按生理特征排序
+- `apps/web/src/components/MysteryView.tsx` — speakText 使用新 API，自动传递当前阶段语境
+- `apps/web/src/components/game-parts.tsx` — PlayerView character 类型添加 age/height/weight
+
+### 验证
+- `pnpm typecheck`：6/7 包通过（web 包 Three.js 类型错误为 WP24 遗留）
+- `pnpm lint`：0 errors（warnings 可接受）
+- `pnpm test`：31 tests 全部通过
+
+### 经验教训
+- Web Speech API 的 Voice 对象选择比 pitch 微调更能产生可信的男女声差异
+- 音色差异化需要多层策略：Voice 选择 > pitch/rate 微调 > volume 辅助
+- 语境（游戏阶段）应该在音色参数计算的最后阶段叠加，避免覆盖生理特征
+- 浏览器 SpeechSynthesis 音色名称没有标准化，只能用启发式规则匹配
+
 ## 下一步
 - 运行 `pnpm install` 安装 Three.js 依赖，消除剩余 TS 类型错误
 - 3D 模式性能优化：降低移动设备上的后处理开销

@@ -16,9 +16,15 @@ import {
   type ActFn,
   type GameViewState,
 } from './game-parts';
-import { computeVoiceParams, type CharacterGender } from '../../../ai-worker/src/game/speech-generator';
+import {
+  computeVoiceParams,
+  PHASE_CONTEXT,
+  type CharacterGender,
+  type VoiceContext,
+  type VoiceProfile,
+} from '../../../ai-worker/src/game/speech-generator';
 import { MysteryAudioEngine, PHASE_MOOD, type MoodType } from './mystery-audio';
-import { selectVoiceForGender } from './tts-voice-selector';
+import { selectVoiceForProfile } from './tts-voice-selector';
 
 /** 情绪标签（中文） */
 const MOOD_LABELS: Record<MoodType, string> = {
@@ -131,11 +137,11 @@ function emotionLabel(emotion: string): string {
   return EMOTION_LABELS[emotion] ?? emotion;
 }
 
-/** Web Speech API TTS 辅助——根据性别和性格差异化音色 + 选择不同 Voice 对象 */
+/** Web Speech API TTS 辅助——根据角色生理特征 + 语境差异化音色 */
 function speakText(
   text: string,
-  gender: CharacterGender | undefined,
-  personality: string,
+  profile: VoiceProfile | undefined,
+  context: VoiceContext | undefined,
   onEnd?: () => void,
 ): void {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
@@ -143,16 +149,17 @@ function speakText(
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'zh-CN';
 
-  // 1. 选择对应性别的系统音色（关键：不同 Voice 对象才能产生真正的男女差异）
-  const selectedVoice = selectVoiceForGender(gender);
+  // 1. 选择对应角色特征的系统音色
+  const selectedVoice = selectVoiceForProfile(profile);
   if (selectedVoice) {
     utterance.voice = selectedVoice;
   }
 
-  // 2. 叠加 pitch/rate 微调作为辅助差异化
-  const { pitch, rate } = computeVoiceParams(gender, personality);
+  // 2. 综合生理特征 + 语境计算 pitch/rate/volume
+  const { pitch, rate, volume } = computeVoiceParams(profile, context);
   utterance.pitch = pitch;
   utterance.rate = rate;
+  utterance.volume = volume;
 
   if (onEnd) {
     utterance.onend = onEnd;
@@ -301,17 +308,23 @@ export function MysteryView({
     };
   }, []);
 
-  // 根据 playerId 查找角色信息（性别/性格）
-  const getCharacterInfo = (playerId: string): { gender?: CharacterGender; personality: string } => {
+  // 当前游戏阶段的语境
+  const currentContext: VoiceContext = PHASE_CONTEXT[view.phase] ?? 'calm';
+
+  // 根据 playerId 查找角色完整信息（性别/年龄/身高/体重/性格）
+  const getCharacterInfo = (playerId: string): VoiceProfile => {
     const player = view.players.find((p) => p.playerId === playerId);
     return {
       gender: player?.character?.gender,
+      age: player?.character?.age,
+      height: player?.character?.height,
+      weight: player?.character?.weight,
       personality: player?.character?.personality ?? '',
     };
   };
 
   // 播放某条发言的 TTS
-  const playTts = (text: string, gender: CharacterGender | undefined, personality: string, e?: React.MouseEvent) => {
+  const playTts = (text: string, profile: VoiceProfile, e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (isSpeaking) {
       stopSpeaking();
@@ -319,7 +332,7 @@ export function MysteryView({
       return;
     }
     setTtsText(text);
-    speakText(text, gender, personality, () => setTtsText(null));
+    speakText(text, profile, currentContext, () => setTtsText(null));
   };
 
   // 自动播放新发言（当开关打开时）
@@ -336,10 +349,10 @@ export function MysteryView({
     if (lastEntry.playerId === myPlayerId) return;
 
     autoPlayedRef.current.add(lastIndex);
-    const { gender, personality } = getCharacterInfo(lastEntry.playerId);
+    const profile = getCharacterInfo(lastEntry.playerId);
     setTtsText(lastEntry.content);
-    speakText(lastEntry.content, gender, personality, () => setTtsText(null));
-  }, [view.discussionLog, autoPlay, myPlayerId]);
+    speakText(lastEntry.content, profile, currentContext, () => setTtsText(null));
+  }, [view.discussionLog, autoPlay, myPlayerId, currentContext]);
 
   // 切换自动播放时清空已播放记录
   const toggleAutoPlay = () => {
@@ -720,7 +733,7 @@ export function MysteryView({
                   <span>{entry.content}</span>
                   <button
                     className="tts-btn"
-                    onClick={(e) => playTts(entry.content, characterInfo.gender, characterInfo.personality, e)}
+                    onClick={(e) => playTts(entry.content, characterInfo, e)}
                     title={isTtsPlaying ? '停止语音' : `播放语音（${characterInfo.gender === 'male' ? '男声' : characterInfo.gender === 'female' ? '女声' : '默认'}）`}
                   >
                     {isTtsPlaying ? <VolumeX size={13} /> : <Volume2 size={13} />}

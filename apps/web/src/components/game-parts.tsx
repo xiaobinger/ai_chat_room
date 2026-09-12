@@ -16,7 +16,15 @@ export interface GamePlayerView {
   hasSpoken?: boolean;
   hasSearched?: boolean;
   suspicionLevel?: number;
-  character?: { name?: string; role?: string; gender?: 'male' | 'female' | 'unknown'; personality?: string };
+  character?: {
+    name?: string;
+    role?: string;
+    gender?: 'male' | 'female' | 'unknown';
+    personality?: string;
+    age?: number;
+    height?: number;
+    weight?: number;
+  };
   word?: string;
 }
 
