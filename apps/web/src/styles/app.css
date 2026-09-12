@@ -283,6 +283,17 @@ cite,.cite-list{display:block}
 .game-view{display:grid;gap:16px}
 .game-view{position:relative}
 .game-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;background:#0b0c11;border:1px solid #252630;border-radius:12px}
+.music-control{display:flex;align-items:center;gap:6px;margin-left:auto}
+.music-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:6px;border:1px solid #3a3460;background:#13141a;color:#8a8a99;font-size:11px;font-weight:500;cursor:pointer;transition:all .15s ease}
+.music-btn:hover{border-color:#5a5470;color:#d4d4dc;background:#1a1b22}
+.music-btn.playing{border-color:#9c6dff;background:#1e1830;color:#c4b5fd;box-shadow:0 0 8px #9c6dff30}
+.music-mood-tag{opacity:.8}
+.music-icon-spin{animation:slowSpin 4s linear infinite}
+@keyframes slowSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.music-volume{display:flex;align-items:center;gap:4px;padding:2px 6px;border-radius:4px;background:#0d0e13;border:1px solid #2a2b38}
+.volume-slider{width:60px;height:4px;-webkit-appearance:none;appearance:none;background:#2a2b38;border-radius:2px;outline:none;cursor:pointer}
+.volume-slider::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;border-radius:50%;background:#9c6dff;cursor:pointer}
+.volume-slider::-moz-range-thumb{width:10px;height:10px;border-radius:50%;background:#9c6dff;cursor:pointer;border:none}
 .stage-veil{position:fixed;inset:0;z-index:40;display:grid;place-items:center;pointer-events:none;background:radial-gradient(circle at center,#ffffff10 0%,#111219e6 45%,#090a0fcc 100%);backdrop-filter:blur(4px);animation:stageVeilIn .32s ease,stageVeilOut .44s ease .38s forwards}
 .stage-veil.warn{background:radial-gradient(circle at center,#ffcf5d18 0%,#17130de6 45%,#090a0fcc 100%)}
 .stage-veil.danger{background:radial-gradient(circle at center,#ff6f911f 0%,#180d11eb 45%,#090a0fcc 100%)}
@@ -589,6 +600,8 @@ button,a,input,textarea,select{
   .game-toolbar .phase-badge{font-size:11px;padding:6px 10px}
   .game-toolbar .player-count{font-size:11px}
   .game-toolbar .countdown{font-size:12px;padding:5px 10px}
+  .music-control{margin-left:0;flex-basis:100%;order:4}
+  .music-btn{flex:1;justify-content:center}
 
   /* 游戏头部换行 */
   .game-header{flex-wrap:wrap;gap:10px;padding:14px}

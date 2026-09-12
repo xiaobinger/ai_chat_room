@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BookOpen, Fingerprint, Link2, Search, Sparkles, Volume2, VolumeX } from 'lucide-react';
+import { BookOpen, Fingerprint, Link2, Music, Music2, Search, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import {
   Countdown,
   HostSummaryCard,
@@ -17,6 +17,18 @@ import {
   type GameViewState,
 } from './game-parts';
 import { computeVoiceParams, type CharacterGender } from '../../../ai-worker/src/game/speech-generator';
+import { MysteryAudioEngine, PHASE_MOOD, type MoodType } from './mystery-audio';
+
+/** 情绪标签（中文） */
+const MOOD_LABELS: Record<MoodType, string> = {
+  mysterious: '神秘',
+  tense: '紧张',
+  contemplative: '沉思',
+  passionate: '激情',
+  suspenseful: '悬念',
+  climactic: '高潮',
+  silent: '静音',
+};
 
 interface MysteryCharacter {
   name: string;
@@ -219,6 +231,66 @@ export function MysteryView({
   // 已自动播放过的发言索引追踪
   const autoPlayedRef = useRef<Set<number>>(new Set());
 
+  // ===== 氛围音乐引擎 =====
+  const audioEngineRef = useRef<MysteryAudioEngine | null>(null);
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const [musicVolume, setMusicVolume] = useState(0.6);
+  const [currentMood, setCurrentMood] = useState<MoodType>('mysterious');
+
+  /** 初始化音频引擎（懒加载，首次用户交互时） */
+  const ensureAudioEngine = async (): Promise<MysteryAudioEngine | null> => {
+    if (!audioEngineRef.current) {
+      const engine = new MysteryAudioEngine();
+      await engine.init();
+      if (!engine.isPlaying && audioEngineRef.current === null) {
+        // init 失败
+        return null;
+      }
+      audioEngineRef.current = engine;
+    }
+    return audioEngineRef.current;
+  };
+
+  /** 切换音乐播放/暂停 */
+  const toggleMusic = async () => {
+    const engine = await ensureAudioEngine();
+    if (!engine) return;
+    if (musicPlaying) {
+      engine.pause();
+      setMusicPlaying(false);
+    } else {
+      const mood = PHASE_MOOD[view.phase] ?? 'mysterious';
+      engine.setMood(mood);
+      engine.play();
+      setMusicPlaying(true);
+      setCurrentMood(mood);
+    }
+  };
+
+  /** 设置音量 */
+  const handleVolumeChange = (vol: number) => {
+    setMusicVolume(vol);
+    audioEngineRef.current?.setVolume(vol);
+  };
+
+  /** 阶段变化时自动切换情绪音景 */
+  useEffect(() => {
+    if (!musicPlaying || !audioEngineRef.current) return;
+    const mood = PHASE_MOOD[view.phase] ?? 'mysterious';
+    if (mood !== currentMood) {
+      audioEngineRef.current.setMood(mood);
+      setCurrentMood(mood);
+    }
+  }, [view.phase, musicPlaying, currentMood]);
+
+  /** 组件卸载时清理音频引擎 */
+  useEffect(() => {
+    return () => {
+      audioEngineRef.current?.dispose();
+      audioEngineRef.current = null;
+    };
+  }, []);
+
   // 根据 playerId 查找角色信息（性别/性格）
   const getCharacterInfo = (playerId: string): { gender?: CharacterGender; personality: string } => {
     const player = view.players.find((p) => p.playerId === playerId);
@@ -294,6 +366,31 @@ export function MysteryView({
           <small>第 {view.round} 轮</small>
         </span>
         <PlayerCount players={view.players} />
+        {/* 氛围音乐控制 */}
+        <div className="music-control">
+          <button
+            className={`music-btn ${musicPlaying ? 'playing' : ''}`}
+            onClick={toggleMusic}
+            title={musicPlaying ? '点击暂停氛围音乐' : '点击播放氛围音乐'}
+          >
+            {musicPlaying ? <Music2 size={14} className="music-icon-spin" /> : <Music size={14} />}
+            <span className="music-mood-tag">{MOOD_LABELS[currentMood] ?? '氛围'}</span>
+          </button>
+          {musicPlaying && (
+            <div className="music-volume">
+              <VolumeX size={10} />
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(musicVolume * 100)}
+                onChange={(e) => handleVolumeChange(Number(e.target.value) / 100)}
+                className="volume-slider"
+              />
+              <Volume2 size={12} />
+            </div>
+          )}
+        </div>
         <Countdown deadline={finished ? null : deadline} onExpire={refresh} />
       </div>
 
