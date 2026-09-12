@@ -18,6 +18,7 @@ import {
 } from './game-parts';
 import { computeVoiceParams, type CharacterGender } from '../../../ai-worker/src/game/speech-generator';
 import { MysteryAudioEngine, PHASE_MOOD, type MoodType } from './mystery-audio';
+import { selectVoiceForGender } from './tts-voice-selector';
 
 /** 情绪标签（中文） */
 const MOOD_LABELS: Record<MoodType, string> = {
@@ -130,7 +131,7 @@ function emotionLabel(emotion: string): string {
   return EMOTION_LABELS[emotion] ?? emotion;
 }
 
-/** Web Speech API TTS 辅助——根据性别和性格差异化音色 */
+/** Web Speech API TTS 辅助——根据性别和性格差异化音色 + 选择不同 Voice 对象 */
 function speakText(
   text: string,
   gender: CharacterGender | undefined,
@@ -141,9 +142,18 @@ function speakText(
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'zh-CN';
+
+  // 1. 选择对应性别的系统音色（关键：不同 Voice 对象才能产生真正的男女差异）
+  const selectedVoice = selectVoiceForGender(gender);
+  if (selectedVoice) {
+    utterance.voice = selectedVoice;
+  }
+
+  // 2. 叠加 pitch/rate 微调作为辅助差异化
   const { pitch, rate } = computeVoiceParams(gender, personality);
   utterance.pitch = pitch;
   utterance.rate = rate;
+
   if (onEnd) {
     utterance.onend = onEnd;
     utterance.onerror = onEnd;

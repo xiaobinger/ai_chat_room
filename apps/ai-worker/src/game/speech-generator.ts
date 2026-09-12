@@ -266,31 +266,31 @@ export function computeVoiceParams(
   gender: CharacterGender | undefined,
   personality: string,
 ): { pitch: number; rate: number } {
-  // 性别基准
+  // 性别基准（更激进的差异化，补偿系统可能只有女声的局限）
   let pitch = 1.0;
   let rate = 1.0;
 
   if (gender === 'male') {
-    pitch = 0.9;
-    rate = 0.95;
+    pitch = 0.75;  // 更低的音高模拟男声
+    rate = 0.88;   // 更慢的语速模拟沉稳
   } else if (gender === 'female') {
-    pitch = 1.2;
+    pitch = 1.25;  // 更高的音高模拟女声
     rate = 1.05;
   }
 
   // 性格微调
   if (/豪爽|直率|暴躁|果断|强势/.test(personality)) {
     rate = Math.min(1.3, rate + 0.1);
-    pitch = Math.max(0.7, pitch - 0.1);
+    pitch = Math.max(0.5, pitch - 0.1);
   } else if (/谨慎|冷静|沉稳|理性|专业/.test(personality)) {
     rate = Math.max(0.7, rate - 0.1);
-    pitch = Math.max(0.7, pitch - 0.05);
+    pitch = Math.max(0.5, pitch - 0.05);
   } else if (/敏感|温柔|胆小|内向|善良|忧郁/.test(personality)) {
     pitch = Math.min(1.5, pitch + 0.1);
     rate = Math.max(0.7, rate - 0.05);
   } else if (/精明|圆滑|狡诈|狡猾/.test(personality)) {
     rate = Math.min(1.3, rate + 0.05);
-    pitch = Math.max(0.7, pitch - 0.05);
+    pitch = Math.max(0.5, pitch - 0.05);
   }
 
   return { pitch: Math.round(pitch * 100) / 100, rate: Math.round(rate * 100) / 100 };
