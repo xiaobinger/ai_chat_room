@@ -351,8 +351,12 @@ function buildSystemPrompt(request: GameSpeechRequest): string {
       ]
     : [];
 
+  // 游戏特定沉浸感增强
+  const gameFlavor = buildGameFlavor(request);
+
   return [
     `你是一名专业的桌面推理游戏玩家，正在沉浸式扮演一个角色。`,
+    gameFlavor,
     `你的昵称：${request.nickname}`,
     `你的身份：${request.gameRole}`,
     `你的性格：${request.personality}`,
@@ -377,6 +381,22 @@ function buildSystemPrompt(request: GameSpeechRequest): string {
     `## 输出要求`,
     `直接输出发言内容，不加任何前缀、引号或元注释。只输出你要说的话。`,
   ].filter(Boolean).join('\n');
+}
+
+/** 根据游戏类型生成特定的沉浸感提示 */
+function buildGameFlavor(request: GameSpeechRequest): string {
+  switch (request.game) {
+    case 'werewolf':
+      return `游戏背景：狼人杀。夜晚狼人睁眼刀人，白天所有人发言投票。你需要隐藏身份或揭露他人，每一句话都关乎生死存亡。`;
+    case 'who_is_the_thief':
+      return `游戏背景：谁是小偷。一起失窃案发生后，所有人接受调查。你需要通过发言洗清嫌疑或转移视线，细节决定成败。`;
+    case 'who_is_undercover':
+      return `游戏背景：谁是卧底。每个人拿到一个词，其中有人拿到不同的词。你需要用巧妙的方式描述自己的词，同时找出队伍中的异类。`;
+    case 'murder_mystery':
+      return `游戏背景：剧本杀推理。一桩命案发生，每个人都有秘密。你需要挖掘线索、质疑他人、隐藏真相，在推理与谎言中寻找真相。`;
+    default:
+      return `游戏背景：桌面推理游戏。`;
+  }
 }
 
 function buildFewShotExamples(request: GameSpeechRequest): string {
@@ -427,28 +447,48 @@ function buildFewShotExamples(request: GameSpeechRequest): string {
 }
 
 function buildUserPrompt(request: GameSpeechRequest): string {
-  const recent = request.recentEvents.slice(-5);
+  const recent = request.recentEvents.slice(-6);
   const phase = request.phase;
 
-  if (recent.length === 0) {
-    return `游戏刚开始，请做一段符合你身份的开场发言。要简短、有个性、能让人记住你是谁。`;
-  }
-
+  // 各游戏各阶段的发言引导
   const phaseGuidance: Record<string, string> = {
     '自我介绍': '现在是自我介绍阶段。请介绍自己的身份、与受害者的关系、案发时你在做什么。要自然，像是在回答朋友的询问。',
     '圆桌讨论': '现在是圆桌讨论阶段。请根据最近的对话内容做出回应——可以质疑某人、为自己辩护、提出新怀疑、或引导话题。要说具体的话，不要泛泛而谈。',
     '公开指控': '现在是公开指控阶段。请给出你最终怀疑的对象和理由。要有理有据，态度坚定但不要人身攻击。',
     '最终指认': '现在是最终投票前的最后发言机会。请表明你的选择和理由。',
+    '白天讨论': '现在是白天讨论阶段。请根据最近的发言内容做出回应——可以质疑某人、为自己辩护、提出新怀疑、或引导话题。要说具体的话，不要泛泛而谈。',
+    '调查发言': '现在是调查发言阶段。请结合已有的线索和笔记做出回应——可以质疑某人、提出新怀疑、或为自己辩护。',
+    '描述阶段': '现在是描述阶段。请用巧妙的方式描述你的词，既不能太明显让卧底猜到，也不能太模糊让同阵营认不出。',
   };
 
   const guidance = phaseGuidance[phase] ?? '请根据最近的对话内容做出自然回应。';
 
+  // 游戏特定的额外上下文
+  const gameContext = buildGameContextHint(request);
+
   return `${guidance}
+${gameContext}
 
 最近的对话记录：
 ${recent.map((r) => `• ${r}`).join('\n')}
 
 请输出你的回应（1-3句话，口语化，符合你的性格和身份）：`;
+}
+
+/** 根据游戏类型生成额外的上下文提示 */
+function buildGameContextHint(request: GameSpeechRequest): string {
+  switch (request.game) {
+    case 'werewolf':
+      return '【游戏提示】狼人要伪装成好人带节奏，神职要暗中引导，村民要观察细节找出狼人。';
+    case 'who_is_the_thief':
+      return '【游戏提示】小偷要混淆视听，侦探要引导推理，目击者要巧妙提供线索。';
+    case 'who_is_undercover':
+      return '【游戏提示】卧底要隐藏身份混入人群，平民要找出描述中的异类。';
+    case 'murder_mystery':
+      return '【游戏提示】凶手要隐藏身份并嫁祸他人，警察要引导调查找出真相，其他角色要完成自己的秘密任务。';
+    default:
+      return '';
+  }
 }
 
 /**

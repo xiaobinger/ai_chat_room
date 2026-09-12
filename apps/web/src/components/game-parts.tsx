@@ -24,6 +24,7 @@ export interface GamePlayerView {
     age?: number;
     height?: number;
     weight?: number;
+    specialAbility?: string;
   };
   word?: string;
 }

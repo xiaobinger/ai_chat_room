@@ -8,8 +8,16 @@ import type {
   ConflictEvent,
   PlotTwist,
   LatecomerProfile,
+  MysteriousCharacterTemplate,
 } from './mystery-types';
-import { MYSTERY_SCENARIOS } from './mystery-types';
+import { MYSTERY_SCENARIOS, MYSTERIOUS_CHARACTER_POOL } from './mystery-types';
+
+/** 从神秘人物模板池随机抽取一个未在本次登场的角色 */
+function pickMysteriousCharacter(usedNames: Set<string>): MysteriousCharacterTemplate | undefined {
+  const available = MYSTERIOUS_CHARACTER_POOL.filter((t) => !usedNames.has(t.role));
+  if (available.length === 0) return undefined;
+  return available[Math.floor(Math.random() * available.length)];
+}
 
 const pick = <T>(list: T[]): T | undefined =>
   list.length > 0 ? list[Math.floor(Math.random() * list.length)] : undefined;
@@ -298,6 +306,47 @@ export function initMysteryState(
           },
     };
   });
+
+  // 随机引入神秘人物（60% 概率），从模板池选取不重复的角色
+  const usedRoles = new Set([
+    ...latecomerChars.map((c) => c.role),
+    ...playerStates.map((p) => p.character.role),
+  ]);
+  if (Math.random() < 0.6) {
+    const mysterious = pickMysteriousCharacter(usedRoles);
+    if (mysterious) {
+      const mystChar: CharacterCard = {
+        id: `myst-${crypto.randomUUID()}`,
+        name: `${mysterious.role}`,
+        role: mysterious.role,
+        personality: mysterious.personality,
+        gender: mysterious.gender === 'unknown' ? undefined : mysterious.gender,
+        age: mysterious.age,
+        height: mysterious.height,
+        weight: mysterious.weight,
+        backstory: mysterious.backstory,
+        secret: mysterious.secret,
+        isMurderer: false,
+        objectives: [{ type: 'find_truth', description: '完成你的秘密任务，但不要被其他人看穿。', reward: '真相', isComplete: false }],
+        alibi: '案发时行踪不明，无法确认。',
+        relationshipToVictim: '与死者之间有着不为人知的关联。',
+        specialAbility: mysterious.specialAbility,
+      };
+      const spare = unusedClues.shift();
+      latecomerPool.push({
+        character: mystChar,
+        arrivalClue: spare
+          ? { ...spare }
+          : {
+              name: `${mysterious.role}的秘密档案`,
+              description: `一份关于${mysterious.role}的封存档案，记录了其与案件的深层关联。`,
+              location: '档案室',
+              revealsInfo: `${mysterious.role}的出现并非偶然——TA掌握着破解本案的关键信息。`,
+              isKey: true,
+            },
+      });
+    }
+  }
 
   return {
     format: 2,
@@ -1212,6 +1261,7 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
           age: p.character.age,
           height: p.character.height,
           weight: p.character.weight,
+          specialAbility: p.character.specialAbility,
         },
         isAlive: p.isAlive,
         isPolice: p.character.isPolice,
@@ -1262,6 +1312,7 @@ export function getPlayerView(state: MysteryGameState, playerId: string | null) 
         isAccomplice: finished ? p.character.isAccomplice : undefined,
         isPolice: p.character.isPolice,
         isCorrupt: finished ? p.character.isCorrupt : undefined,
+        specialAbility: p.character.specialAbility,
       },
       isAlive: p.isAlive,
       isMe: p.playerId === playerId,

@@ -184,8 +184,14 @@ export class UndercoverGame extends BaseGameEngine {
 
     const customHint =
       player.role === 'undercover'
-        ? `你是卧底，要尽量贴近大多数人的描述方向，但避免把词说得太实。你的词是“${player.word}”。`
-        : `你是平民，请自然描述自己的词“${player.word}”，帮助同阵营识别偏离的人。`;
+        ? `你是卧底，要尽量贴近大多数人的描述方向，但避免把词说得太实。你的词是"${player.word}"。`
+        : `你是平民，请自然描述自己的词"${player.word}"，帮助同阵营识别偏离的人。`;
+
+    // 提取该玩家自己的前几次发言，用于防重复
+    const ownPreviousSpeeches = this.state.descriptions
+      .filter((d) => d.playerId === player.playerId)
+      .slice(-3)
+      .map((d) => d.content);
 
     const llmSpeech = await generateLlmSpeech(this.speechProvider, {
       game: 'who_is_undercover',
@@ -197,6 +203,7 @@ export class UndercoverGame extends BaseGameEngine {
       recentEvents,
       timeoutMs: 30_000,
       customHint,
+      ownPreviousSpeeches,
     });
 
     if (llmSpeech && llmSpeech.trim().length >= 2) {

@@ -469,6 +469,11 @@ export class WerewolfGame extends BaseGameEngine {
   private async speakForDay(p: PlayerState): Promise<void> {
     const state = this.state;
     const recentEvents = state.dayMessages.slice(-5).map((m) => `${m.nickname}: ${m.content}`);
+    // 提取该玩家自己的前几次发言，用于防重复
+    const ownPreviousSpeeches = state.dayMessages
+      .filter((m) => m.playerId === p.playerId)
+      .slice(-3)
+      .map((m) => m.content);
     const speech = await generateLlmSpeech(this.speechProvider!, {
       game: 'werewolf',
       nickname: p.nickname,
@@ -479,6 +484,7 @@ export class WerewolfGame extends BaseGameEngine {
       recentEvents,
       timeoutMs: 30_000,
       customHint: p.role === 'werewolf' ? '你是狼人，要伪装成好人，误导投票方向。' : undefined,
+      ownPreviousSpeeches,
     });
     if (speech && speech.trim().length >= 2) {
       applyDaySpeak(state, p.playerId, speech);

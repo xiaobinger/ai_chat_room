@@ -13,6 +13,8 @@
 
 export type MoodType = 'mysterious' | 'tense' | 'contemplative' | 'passionate' | 'suspenseful' | 'climactic' | 'silent';
 
+export type StingerType = 'phase_change' | 'clue_found' | 'accusation' | 'vote_cast' | 'reveal' | 'death' | 'whisper';
+
 /** 阶段 → 情绪映射 */
 export const PHASE_MOOD: Record<string, MoodType> = {
   introduction: 'mysterious',
@@ -357,6 +359,158 @@ export class MysteryAudioEngine {
     this._isPlaying = true;
     if (this._mood !== 'silent') {
       this.setMood(this._mood);
+    }
+  }
+
+  /** 播放短促音效（stiger）用于关键事件提醒 */
+  playStinger(type: StingerType): void {
+    if (!this.ctx || !this.masterGain || !this._isInitialized) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+
+    switch (type) {
+      case 'phase_change': {
+        // 庄严钟声 — 阶段切换
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 220;
+        const osc2 = ctx.createOscillator();
+        osc2.type = 'sine';
+        osc2.frequency.value = 330;
+        const gain2 = ctx.createGain();
+        gain2.gain.value = 0.5;
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.18, now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+        gain2.gain.setValueAtTime(0, now);
+        gain2.gain.linearRampToValueAtTime(0.12, now + 0.02);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+        osc.connect(gain);
+        osc2.connect(gain2);
+        gain.connect(this.masterGain);
+        gain2.connect(this.masterGain);
+        osc.start(now);
+        osc2.start(now);
+        osc.stop(now + 1.3);
+        osc2.stop(now + 1.1);
+        break;
+      }
+      case 'clue_found': {
+        // 清脆提示音 — 线索发现
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(660, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.15, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+        osc.start(now);
+        osc.stop(now + 0.35);
+        break;
+      }
+      case 'accusation': {
+        // 紧张低音 — 指控时刻
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(120, now);
+        osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
+        filter.type = 'lowpass';
+        filter.frequency.value = 600;
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.2, now + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+        osc.start(now);
+        osc.stop(now + 0.55);
+        break;
+      }
+      case 'vote_cast': {
+        // 短促敲击声 — 投票
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 440;
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.14, now + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+        osc.start(now);
+        osc.stop(now + 0.18);
+        break;
+      }
+      case 'reveal': {
+        // 高潮揭晓 — 铜管齐奏感
+        const freqs = [261.63, 329.63, 392, 523.25];
+        for (let i = 0; i < freqs.length; i++) {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sawtooth';
+          const start = now + i * 0.06;
+          osc.frequency.value = freqs[i];
+          const filter = ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.value = 2000;
+          gain.gain.setValueAtTime(0, start);
+          gain.gain.linearRampToValueAtTime(0.1 * (1 - i * 0.15), start + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + 1.0);
+          osc.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.masterGain);
+          osc.start(start);
+          osc.stop(start + 1.1);
+        }
+        break;
+      }
+      case 'death': {
+        // 低沉下行 — 死亡/出局
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.exponentialRampToValueAtTime(60, now + 0.6);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.22, now + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+        osc.start(now);
+        osc.stop(now + 0.85);
+        break;
+      }
+      case 'whisper': {
+        // 风声/低语感 — 神秘氛围
+        const bufferSize = ctx.sampleRate * 0.6;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+        }
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 800;
+        filter.Q.value = 2;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.08, now + 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+        source.start(now);
+        source.stop(now + 0.65);
+        break;
+      }
     }
   }
 

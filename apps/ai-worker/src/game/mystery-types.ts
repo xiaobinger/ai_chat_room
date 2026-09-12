@@ -1,5 +1,7 @@
 /** 剧本杀游戏类型定义 */
 
+import type { CharacterGender } from './speech-generator';
+
 export type MysteryPhase = 'introduction' | 'investigation' | 'discussion' | 'accusation' | 'voting' | 'reveal';
 
 /**
@@ -41,6 +43,7 @@ export interface CharacterCard {
   relationshipToVictim: string;  // 与受害者的真实关系
   claimedRelationships?: RelationshipClaim[];  // 自我介绍时声称的关系（可真可假）
   objectives: PersonalObjective[];  // 个人任务（完成任意一个即算个人胜利）
+  specialAbility?: string;  // 特殊能力（神秘人物专属，描述其独特技能）
 }
 
 export interface ClueCard {
@@ -1557,6 +1560,166 @@ export const MYSTERY_SCENARIOS: MysteryScenario[] = [
         isKey: false,
       },
     ],
+  },
+];
+
+// ========== 神秘人物模板池（每局随机引入） ==========
+
+export interface MysteriousCharacterTemplate {
+  role: string;
+  personality: string;
+  gender: CharacterGender;
+  age: number;
+  height: number;
+  weight: number;
+  backstory: string;
+  secret: string;
+  specialAbility?: string;
+}
+
+export const MYSTERIOUS_CHARACTER_POOL: MysteriousCharacterTemplate[] = [
+  {
+    role: '流浪艺人',
+    personality: '浪漫、神秘、见多识广',
+    gender: 'male',
+    age: 35,
+    height: 178,
+    weight: 72,
+    backstory: '一位背着吉他的流浪艺人，自称走遍了大江南北，知道很多奇闻异事。',
+    secret: '他其实是一位隐退的私家侦探，这次来是为了调查一桩旧案。',
+    specialAbility: '可以在深夜独奏一曲，让所有人陷入沉思。',
+  },
+  {
+    role: '古董商人',
+    personality: '精明、世故、说话滴水不漏',
+    gender: 'male',
+    age: 58,
+    height: 170,
+    weight: 78,
+    backstory: '来自上海的古董商人，专门收购民间珍品行销海外。',
+    secret: '他手中的某件古董与死者有千丝万缕的联系，是当年灭门案的关键证物。',
+    specialAbility: '可以用一件古董引出某个人物隐藏的秘密。',
+  },
+  {
+    role: '盲眼算命先生',
+    personality: '诡异、言语晦涩、似乎能看透一切',
+    gender: 'male',
+    age: 70,
+    height: 165,
+    weight: 55,
+    backstory: '一个拄着竹杖的盲人算命先生，没人知道他是怎么来到这里的。',
+    secret: '他并非真盲，而是当年死里逃生的复仇者。',
+    specialAbility: '可以"算"出某个人的命运，引导其说出真话。',
+  },
+  {
+    role: '西洋女记者',
+    personality: '直率、大胆、追问到底',
+    gender: 'female',
+    age: 29,
+    height: 172,
+    weight: 58,
+    backstory: '一位从伦敦来的女记者，听说这里发生了奇闻，专程前来采访。',
+    secret: '她的真实身份是死者当年抛弃的私生女。',
+    specialAbility: '可以公开揭露一条隐藏最深的丑闻。',
+  },
+  {
+    role: '云游道士',
+    personality: '清心寡欲、偶尔语出惊人',
+    gender: 'male',
+    age: 45,
+    height: 175,
+    weight: 62,
+    backstory: '一位云游四方的道士，路过此地暂住一晚。',
+    secret: '他是死者年轻时学道的同门师兄，掌握着死者不为人知的过去。',
+    specialAbility: '可以让一个灵魂短暂显灵，说出最后一句话。',
+  },
+  {
+    role: '失语症少女',
+    personality: '沉默、眼神深邃、只能通过纸条交流',
+    gender: 'female',
+    age: 18,
+    height: 158,
+    weight: 44,
+    backstory: '一个不会说话的少女，随身携带一本厚厚的笔记本，用文字与人交流。',
+    secret: '她是死者的亲生女儿，目睹了案发全过程但因恐惧而失语。',
+    specialAbility: '可以在笔记本上画出凶手的肖像。',
+  },
+  {
+    role: '退役军官',
+    personality: '纪律严明、不苟言笑、观察力极强',
+    gender: 'male',
+    age: 52,
+    height: 180,
+    weight: 82,
+    backstory: '一位刚从战场退役的军官，来此地疗养散心。',
+    secret: '他当年的部下因而死在死者手下，这次是来讨债的。',
+    specialAbility: '可以指挥全场进行一次军事化的有序搜查。',
+  },
+  {
+    role: '草药婆婆',
+    personality: '慈祥、神秘、知晓各种偏方',
+    gender: 'female',
+    age: 67,
+    height: 155,
+    weight: 52,
+    backstory: '深山里采药的婆婆，偶尔下山卖药，知道很多山野奇方。',
+    secret: '她当年是产婆，亲手接生了死者，也知道死者真正的身世。',
+    specialAbility: '可以用草药让人说出真话（吐真剂）。',
+  },
+  {
+    role: '逃婚的新娘',
+    personality: '惶恐、矛盾、有难言之隐',
+    gender: 'female',
+    age: 24,
+    height: 164,
+    weight: 49,
+    backstory: '一个穿着嫁衣出逃的新娘，躲在这里不敢出去。',
+    secret: '她的新郎正是死者的儿子，而死者的反对导致了这场悲剧。',
+    specialAbility: '可以出示一件能证明某人清白的信物。',
+  },
+  {
+    role: '说书人',
+    personality: '口齿伶俐、善于渲染气氛、掌控节奏',
+    gender: 'male',
+    age: 40,
+    height: 172,
+    weight: 70,
+    backstory: '一个走街串巷的说书人，当晚正好在附近茶馆说书。',
+    secret: '他说书的内容与当年的命案惊人相似，仿佛亲身经历。',
+    specialAbility: '可以用一段书词引出某个人深藏的记忆。',
+  },
+  {
+    role: '日本商人',
+    personality: '礼貌、精明、深藏不露',
+    gender: 'male',
+    age: 45,
+    height: 170,
+    weight: 68,
+    backstory: '一位来中国做生意的日本商人，中文流利，对当地了如指掌。',
+    secret: '他是当年侵华日军留下的遗孤，被当地人收养，如今回来认祖归宗。',
+    specialAbility: '可以用一份旧档案揭示某个人的真实身份。',
+  },
+  {
+    role: '舞女',
+    personality: '妩媚、世故、看透人心',
+    gender: 'female',
+    age: 28,
+    height: 166,
+    weight: 51,
+    backstory: '从城里来的舞女，自称是来"度假"的。',
+    secret: '她是死者当年抛弃的旧情人，此次回来是为了讨一个说法。',
+    specialAbility: '可以用一段舞蹈引出某个人内心的欲望。',
+  },
+  {
+    role: '孤儿院院长',
+    personality: '慈爱、坚定、有正义感',
+    gender: 'female',
+    age: 42,
+    height: 162,
+    weight: 56,
+    backstory: '一位孤儿院院长，这次来是为了给孤儿院筹集善款。',
+    secret: '死者当年侵吞了孤儿院的善款，导致多名孤儿惨死。',
+    specialAbility: '可以用道德压力迫使某人认罪。',
   },
 ];
 

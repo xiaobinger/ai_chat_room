@@ -48,6 +48,8 @@ interface MysteryCharacter {
   alibi: string;
   relationshipToVictim: string;
   isMurderer: boolean;
+  specialAbility?: string;
+  suspicionLevel?: number;
 }
 
 interface MysteryClue {
@@ -568,6 +570,9 @@ export function MysteryView({
           </p>
           <p className="objective">目标：{view.myCharacter.objective}</p>
           <p className="alibi">不在场证明：{view.myCharacter.alibi}</p>
+          {view.myCharacter.specialAbility && (
+            <p className="special-ability">特殊能力：{view.myCharacter.specialAbility}</p>
+          )}
         </div>
       )}
 

@@ -236,6 +236,12 @@ export class ThiefGame extends BaseGameEngine {
       ...this.state.revealedClues.slice(-2).map((clue) => `公开线索：${clue}`),
     ];
 
+    // 提取该玩家自己的前几次发言，用于防重复
+    const ownPreviousSpeeches = this.state.speechLog
+      .filter((s) => s.playerId === player.playerId)
+      .slice(-3)
+      .map((s) => s.content);
+
     const customHints: Record<ThiefPlayerState['role'], string> = {
       thief: '你是小偷，要隐藏身份并把怀疑引到别人身上。',
       master_thief: '你是神偷，要像核心带节奏者一样说话，但不能暴露自己。',
@@ -255,6 +261,7 @@ export class ThiefGame extends BaseGameEngine {
       recentEvents,
       timeoutMs: 30_000,
       customHint: customHints[player.role],
+      ownPreviousSpeeches,
     });
 
     if (llmSpeech && llmSpeech.trim().length >= 2) {

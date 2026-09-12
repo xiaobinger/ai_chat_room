@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+export type BgmStingerType = 'phase_change' | 'vote_start' | 'elimination' | 'game_end' | 'tension_peak';
+
 interface GamePhaseInput {
   gameType?: string | null;
   phase?: string | null;
@@ -586,6 +588,56 @@ export function useAdaptiveGameBgm(input: GamePhaseInput) {
     activeKeyRef.current = profile.key;
   }, [enabled, ensureContext, profile, stopCurrent, supported, volume]);
 
+  /** 播放短促音效（stiger）用于关键事件提醒 */
+  const playStinger = useCallback(
+    (type: BgmStingerType) => {
+      if (!enabled || !supported) return;
+      const ctx = ctxRef.current;
+      if (!ctx || ctx.state !== 'running') return;
+      const now = ctx.currentTime;
+      const master = ctx.destination;
+
+      const playTone = (freq: number, dur: number, gainAmt: number, wave: OscillatorType, delay = 0) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = wave;
+        osc.frequency.value = freq;
+        g.gain.setValueAtTime(0, now + delay);
+        g.gain.linearRampToValueAtTime(gainAmt, now + delay + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.001, now + delay + dur);
+        osc.connect(g);
+        g.connect(master);
+        osc.start(now + delay);
+        osc.stop(now + delay + dur + 0.05);
+      };
+
+      switch (type) {
+        case 'phase_change':
+          playTone(330, 0.6, 0.12, 'sine');
+          playTone(440, 0.5, 0.08, 'sine', 0.08);
+          break;
+        case 'vote_start':
+          playTone(294, 0.3, 0.1, 'triangle');
+          playTone(392, 0.25, 0.08, 'triangle', 0.12);
+          break;
+        case 'elimination':
+          playTone(200, 0.5, 0.12, 'sine');
+          playTone(150, 0.6, 0.15, 'sine', 0.1);
+          break;
+        case 'game_end': {
+          const notes = [262, 330, 392, 523];
+          notes.forEach((f, i) => playTone(f, 0.4, 0.09, 'sine', i * 0.1));
+          break;
+        }
+        case 'tension_peak':
+          playTone(147, 0.4, 0.1, 'sawtooth');
+          playTone(110, 0.5, 0.08, 'sawtooth', 0.05);
+          break;
+      }
+    },
+    [enabled, supported],
+  );
+
   const toggleEnabled = useCallback(async () => {
     const next = !enabled;
     setEnabled(next);
@@ -672,5 +724,6 @@ export function useAdaptiveGameBgm(input: GamePhaseInput) {
     setVolume,
     toggleEnabled,
     resume: startCurrentProfile,
+    playStinger,
   };
 }

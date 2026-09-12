@@ -1062,6 +1062,42 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
 - 语境（游戏阶段）应该在音色参数计算的最后阶段叠加，避免覆盖生理特征
 - 浏览器 SpeechSynthesis 音色名称没有标准化，只能用启发式规则匹配
 
+## 2026-09-12：神秘人物池扩展 + 全游戏防重复 + 事件驱动音效 + Typecheck 修复
+
+### 关键事件
+- **神秘人物模板池**：新增 12 个神秘人物模板（流浪艺人、古董商人、神秘女记者等），每局 60% 概率随机引入，从已使用角色中去重抽取
+- **全游戏发言防重复**：狼人杀、谁是小偷、谁是卧底、剧本杀四款游戏统一引入 `ownPreviousSpeeches` 机制，AI 发言时传入最近 3 条自身发言，提示词要求"不要重复自己"
+- **事件驱动音效（Stinger SFX）**：
+  - `mystery-audio.ts` 新增 `StingerType`（7 种：phase_change/clue_found/accusation/vote_cast/reveal/death/whisper），使用 Web Audio API 合成短促音效
+  - `useAdaptiveGameBgm.ts` 新增 `BgmStingerType`（5 种：phase_change/vote_start/elimination/game_end/tension_peak），在关键节点触发
+- **前端类型同步**：`game-parts.tsx` 和 `MysteryView.tsx` 新增 `specialAbility` 字段，神秘人物角色卡展示特殊能力描述
+- **Typecheck 修复**：
+  - `mystery-types.ts`：从 `speech-generator.ts` 导入 `CharacterGender` 类型
+  - `mystery-engine.ts`：神秘人物角色卡补充 `isMurderer: false` 字段
+  - `mystery-engine.ts`：修复 `arrivalClue` 类型不匹配（移除多余的 `id` 字段）
+  - `mystery-engine.ts`：`CharacterGender` 的 `'unknown'` 映射为 `undefined` 以适配 `CharacterCard.gender` 类型
+
+### 修改文件
+- `apps/ai-worker/src/game/mystery-types.ts` — 新增 MysteriousCharacterTemplate 接口 + MYSTERIOUS_CHARACTER_POOL（12 模板）+ CharacterGender 导入
+- `apps/ai-worker/src/game/mystery-engine.ts` — 神秘人物入场逻辑 + isMurderer 修复 + gender 映射 + arrivalClue 类型修复
+- `apps/ai-worker/src/game/werewolf-game.ts` — ownPreviousSpeeches 防重复
+- `apps/ai-worker/src/game/thief-game.ts` — ownPreviousSpeeches 防重复
+- `apps/ai-worker/src/game/undercover-game.ts` — ownPreviousSpeeches 防重复
+- `apps/web/src/components/game-parts.tsx` — character 类型添加 specialAbility
+- `apps/web/src/components/MysteryView.tsx` — MysteryCharacter 接口添加 specialAbility/suspicionLevel + UI 展示
+- `apps/web/src/components/mystery-audio.ts` — 新增 StingerType + playStinger 方法
+- `apps/web/src/hooks/useAdaptiveGameBgm.ts` — 新增 BgmStingerType + playStinger 回调
+
+### 验证
+- `pnpm typecheck`：6/7 包通过（web 包 Three.js 类型错误为 WP24 遗留，待 pnpm install 修复）
+- `pnpm test`：31 tests 全部通过
+- `pnpm lint`：0 errors（warnings 可接受）
+
+### 经验教训
+- `import type` 不会产生循环依赖，即使两个模块互相引用类型也是安全的
+- TypeScript 对 spread 操作不会做 excess property checking，但显式添加被 Omit 排除的属性会报错
+- `CharacterGender` 包含 `'unknown'` 而 `CharacterCard.gender` 不包含，需要在边界处做类型映射
+
 ## 下一步
 - 运行 `pnpm install` 安装 Three.js 依赖，消除剩余 TS 类型错误
 - 3D 模式性能优化：降低移动设备上的后处理开销
