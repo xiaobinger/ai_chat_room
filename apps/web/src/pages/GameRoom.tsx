@@ -7,6 +7,7 @@ import { useGameRoomSocket } from '../hooks/useGameRoomSocket';
 import { useAdaptiveGameBgm } from '../hooks/useAdaptiveGameBgm';
 import { Shell, Top, Notice } from '../components/Shell';
 import { WerewolfView } from '../components/WerewolfView';
+import { Werewolf3DView } from '../components/werewolf3d/Werewolf3DView';
 import { ThiefGameView } from '../components/ThiefGameView';
 import { MysteryView } from '../components/MysteryView';
 import { UndercoverView } from '../components/UndercoverView';
@@ -70,6 +71,7 @@ export default function GameRoom() {
   const [state, setState] = useState<GameStateResponse | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [is3DMode, setIs3DMode] = useState(false);
   const reloadSeq = useRef(0);
 
   const reload = useCallback(async () => {
@@ -380,14 +382,33 @@ export default function GameRoom() {
           <>
             {!view && playing && <Notice kind="info">正在同步游戏状态...</Notice>}
             {view && room.gameType === 'werewolf' && (
-              <WerewolfView
-                view={view}
-                myPlayerId={state?.myPlayerId ?? null}
-                alive={iAmAlive}
-                deadline={state?.deadline ?? null}
-                act={act}
-                refresh={() => void reload()}
-              />
+              <button
+                className="werewolf3d-toggle"
+                onClick={() => setIs3DMode((v) => !v)}
+                title={is3DMode ? '切换到 2D 视图' : '切换到 3D 视图'}
+              >
+                {is3DMode ? '2D' : '3D'}
+              </button>
+            )}
+            {view && room.gameType === 'werewolf' && (
+              <>
+                {is3DMode ? (
+                  <Werewolf3DView
+                    view={view}
+                    act={act}
+                    onExpire={() => void reload()}
+                  />
+                ) : (
+                  <WerewolfView
+                    view={view}
+                    myPlayerId={state?.myPlayerId ?? null}
+                    alive={iAmAlive}
+                    deadline={state?.deadline ?? null}
+                    act={act}
+                    refresh={() => void reload()}
+                  />
+                )}
+              </>
             )}
             {view && room.gameType === 'who_is_the_thief' && (
               <ThiefGameView

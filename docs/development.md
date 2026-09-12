@@ -268,6 +268,21 @@ PM2 配置在 `ecosystem.config.cjs`（双进程：`tianma-api` + `tianma-worker
 - **结算逻辑重写**：`getResults()` 帮凶 win 条件 = 凶手胜且帮凶存活；`generateEpilogues()` 增加"共犯落网/完美共谋/连环反转/迷雾终局"多结局变体
 - **前端演出**：`MysteryView` 新增 `twist-banner`（4 种反转各有配色 + 扫光动画）和 `evidence-chain`（4 点圆点 + 连接线 + 闭合高亮动画）
 
+### 狼人杀 3D 模式（WP24，2026-09-11）
+
+- **技术栈**：Three.js + @react-three/fiber (React 渲染器) + @react-three/drei (OrbitControls/Html/PerspectiveCamera) + @react-three/postprocessing (Bloom/Vignette)
+- **依赖**：`three@^0.169.0`, `@react-three/fiber@^8.17.0`, `@react-three/drei@^9.114.0`, `@react-three/postprocessing@^2.16.0`, `@types/three@^0.169.0`
+- **组件架构**：
+  - `PlayerAvatar.tsx` — 胶囊体身体 + 球体头部，角色颜色区分（狼人红/村民灰/预言家紫/女巫绿/猎人琥珀），当前行动者头顶金色圆锥，死亡角色倒地 + 红色标记，Html overlay 名牌（角色图标 + 名字 + "我"标记）
+  - `GameTable.tsx` — 圆柱体圆桌 + 座位标记 + 中央点光源（夜晚橙色/白天金色）
+  - `Environment3D.tsx` — 程序化树木（树干 + 圆锥树冠）、篝火（木柴 + 闪烁点光 + 火焰圆锥）、旋转月亮、星空粒子、昼夜雾色切换
+  - `WerewolfScene.tsx` — Canvas 包装器，PerspectiveCamera 俯视角度，OrbitControls 约束旋转角度，Bloom 后处理（夜晚更强）+ Vignette 暗角
+  - `Werewolf3DView.tsx` — 主组件，包含 HUD（阶段/轮次/倒计时）、侧边栏（身份卡 + 玩家列表 + 时间线）、底部交互面板（发言/行动/确认）
+- **座位布局**：按 `seatNumber` 环形排列，半径自适应（≤4 人 r=2, ≤6 人 r=2.5, ≤8 人 r=3, >8 人 r=3.5）
+- **交互流程**：点击行动按钮 → 进入交互模式 → 点击 3D 角色选中（高亮 + 缩放）→ 底部确认面板执行动作
+- **集成方式**：`GameRoom.tsx` 新增 `is3DMode` 状态 + 右上角浮动切换按钮（`.werewolf3d-toggle`），条件渲染 `Werewolf3DView` 或 `WerewolfView`
+- **样式**：`app.css` 新增 `.werewolf3d*` 系列（Grid 布局 HUD+Stage+Sidebar，面板毛玻璃效果，响应式窄屏适配）
+
 ## 已知未完成
 
 - 剧本杀游戏：更完整的复盘页、观察记录与悄悄话前端展示仍待补齐

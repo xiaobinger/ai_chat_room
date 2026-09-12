@@ -928,7 +928,43 @@ PG→MySQL、迁移重新基线、纯 Fastify + Vite SPA 而非 NestJS/Next、
     同类规则在多引擎间复制时要做一次清单核对。偶发的 `runToEnd` 步数超限不是测试问题，
     是真实 livelock 的信号。
 
+## 2026-09-11：WP24 狼人杀 3D 模式（纯 3D 全场景）
+
+### 关键事件
+- **3D 模式引入**：为狼人杀游戏添加纯 3D 全场景视图，玩家可在 3D 村庄中体验完整对局
+- **技术栈**：Three.js + @react-three/fiber (React 渲染器) + @react-three/drei (辅助工具) + @react-three/postprocessing (Bloom/Vignette 后处理)
+- **场景构成**：圆形座位布局（按 seatNumber 环形排列）、中央圆桌、村庄环境（树木、篝火、月亮、星空）、昼夜氛围切换
+- **角色差异化**：狼人身红色、村民灰色、预言家紫色、女巫绿色、猎人琥珀色；当前行动者头顶金色圆锥指示器；死亡角色倒地 + 红色标记
+- **交互方式**：点击 3D 角色选中目标 → 底部面板确认行动（狼刀/查验/女巫/投票）；白天发言面板；支持 OrbitControls 旋转视角
+- **切换方式**：右上角浮动 3D/2D 切换按钮，即时切换两种视图
+
+### 技术细节
+- 依赖：`three@^0.169.0`, `@react-three/fiber@^8.17.0`, `@react-three/drei@^9.114.0`, `@react-three/postprocessing@^2.16.0`, `@types/three@^0.169.0`
+- 组件文件：
+  - `apps/web/src/components/werewolf3d/PlayerAvatar.tsx` — 3D 角色模型（胶囊体 + 球体头部 + 名牌 Html overlay）
+  - `apps/web/src/components/werewolf3d/GameTable.tsx` — 圆桌 + 动态灯光
+  - `apps/web/src/components/werewolf3d/Environment3D.tsx` — 村庄场景（树木、篝火、月亮、星空、雾）
+  - `apps/web/src/components/werewolf3d/WerewolfScene.tsx` — Canvas 包装器（相机、OrbitControls、后处理）
+  - `apps/web/src/components/werewolf3d/Werewolf3DView.tsx` — 主组件（HUD + 交互面板 + 侧边栏）
+- 集成点：`apps/web/src/pages/GameRoom.tsx` — 新增 `is3DMode` 状态 + 浮动切换按钮
+- 样式：`apps/web/src/styles/app.css` — 新增 `.werewolf3d*` 系列 CSS 类（约 370 行）
+- 座位半径自适应：≤4 人 r=2, ≤6 人 r=2.5, ≤8 人 r=3, >8 人 r=3.5
+- 响应式：窄屏（≤768px）侧边栏移至底部，时间线隐藏
+
+### 验证
+- `pnpm lint`：0 errors
+- `pnpm test`：31 tests 全部通过
+- `pnpm typecheck`：Three.js JSX 固有元素类型错误（待 `pnpm install` 后自动消除）
+
+### 经验教训
+- `@react-three/fiber` 通过模块扩展 `JSX.IntrinsicElements` 添加 Three.js 元素类型，未安装时所有 `<mesh>`/`<group>` 等标签报 TS 错误
+- lucide-react 图标名称需精确匹配，`FlaskCross` 不存在，正确名称为 `FlaskConical`
+- 共享组件（PhaseBadge/RoleCard/WinnerBanner）的 props 接口可能与新需求不匹配，需适配而非强行传参
+
 ## 下一步
+- 运行 `pnpm install` 安装 Three.js 依赖，消除剩余 TS 类型错误
+- 3D 模式性能优化：降低移动设备上的后处理开销
+- 添加更多 3D 动画：投票指向手势、猎人开枪火化、身份揭示光效
 - 实现 `mvp-spec §3.4` 的点名下一位发言者（连同后端支持一起加，不留悬空契约字段）
 - 安全收尾：轮换模型 Key、MySQL 换最小权限账号、加强 `JWT_SECRET`
 - 推送到 GitHub 跑一次真实 CI，验证 MySQL/Redis service containers 在云端可用
